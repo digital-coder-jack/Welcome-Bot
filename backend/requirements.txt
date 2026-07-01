@@ -1,0 +1,13 @@
+# FastAPI + ASGI server
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# Data validation & settings
+pydantic==2.10.4
+pydantic-settings==2.7.1
+
+# Groq API client
+groq==0.13.1
+
+# Environment variables
+python-dotenv==1.0.1

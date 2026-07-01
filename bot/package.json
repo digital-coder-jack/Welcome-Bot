@@ -1,0 +1,29 @@
+{
+  "name": "welcome-bot",
+  "version": "1.0.0",
+  "description": "Discord Welcome & AI Moderation Bot (Discord.js v14)",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "deploy": "node src/commands/deploy-commands.js"
+  },
+  "keywords": [
+    "discord",
+    "discord.js",
+    "moderation",
+    "welcome-bot",
+    "ai"
+  ],
+  "author": "digital-coder-jack",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5",
+    "undici": "^6.19.8"
+  }
+}
