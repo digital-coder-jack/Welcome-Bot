@@ -5,12 +5,13 @@ with layered auto-moderation, and uses an **AI backend (FastAPI + Groq)** to
 detect nuanced abuse such as toxicity, harassment, hate speech, threats and
 personal attacks.
 
-The project is split into two independent services:
+The project is split into independent services:
 
-| Service     | Stack                                   | Responsibility                                  |
-|-------------|-----------------------------------------|-------------------------------------------------|
-| **bot/**    | Node.js · Discord.js v14 · ES Modules   | Discord client, welcome/goodbye, warnings, auto-mod |
-| **backend/**| Python 3.12+ · FastAPI · Groq · Pydantic| AI message analysis (`/moderate`, `/health`)    |
+| Service        | Stack                                     | Responsibility                                  |
+|----------------|-------------------------------------------|--------------------------------------------------|
+| **bot/**       | Node.js · Discord.js v14 · ES Modules     | Discord client, welcome/goodbye, warnings, auto-mod |
+| **backend/**   | Python 3.12+ · FastAPI · Groq · Pydantic  | AI message analysis (`/moderate`, `/health`)    |
+| **onboarding/**| Python 3.12+ · discord.py 2.x · aiosqlite · Pillow | ⚡ **Developer Forge premium Welcome & Onboarding System** — welcome embeds + generated welcome cards, auto roles, invite tracking, first-message 🔥 Forge Member unlock, welcome/congrats DMs, private **Telegram owner notifications**, `/forge` config dashboard. See [`onboarding/README.md`](onboarding/README.md). |
 
 The bot talks to the backend **only** through two HTTP endpoints, keeping the
 two halves cleanly decoupled.
