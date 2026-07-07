@@ -11,7 +11,7 @@ The project is split into independent services:
 |----------------|-------------------------------------------|--------------------------------------------------|
 | **bot/**       | Node.js · Discord.js v14 · ES Modules     | Discord client, welcome/goodbye, warnings, auto-mod |
 | **backend/**   | Python 3.12+ · FastAPI · Groq · Pydantic  | AI message analysis (`/moderate`, `/health`)    |
-| **onboarding/**| Python 3.12+ · discord.py 2.x · aiosqlite · Pillow | ⚡ **Developer Forge premium Welcome & Onboarding System** — welcome embeds + generated welcome cards, auto roles, invite tracking, first-message 🔥 Forge Member unlock, welcome/congrats DMs, private **Telegram owner notifications**, `/forge` config dashboard. See [`onboarding/README.md`](onboarding/README.md). |
+| **onboarding/**| Python 3.12+ · discord.py 2.x · aiosqlite · Pillow | ⚡ **Developer Forge premium Welcome & Onboarding System v2.0** — welcome embeds + generated welcome cards, **premium multi-embed welcome DM with animated GIF banner & buttons**, auto roles, invite tracking, first-message 🔥 Forge Member unlock, **3-level warning system (reminder → official warning → auto kick/ban)**, **member intelligence database with existing-members scan, change history & join/leave/rejoin tracking**, private **Telegram security logs**, `/forge` `/security` `/warn` `/intel` dashboards. See [`onboarding/README.md`](onboarding/README.md). |
 
 The bot talks to the backend **only** through two HTTP endpoints, keeping the
 two halves cleanly decoupled.

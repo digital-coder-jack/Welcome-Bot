@@ -42,7 +42,26 @@ class Database:
             await self._conn.executescript(schema.read_text(encoding="utf-8"))
             log.debug("Applied schema: %s", schema.name)
         await self._conn.commit()
+        await self._migrate()
         log.info("Database ready at %s", self._path)
+
+    async def _migrate(self) -> None:
+        """Additive column migrations for databases created before v2.0.
+        ALTER TABLE ADD COLUMN is a no-op-safe upgrade path in SQLite."""
+        migrations = (
+            ("welcome_settings", "dm_banner_url", "TEXT"),
+        )
+        for table, column, ctype in migrations:
+            try:
+                cur = await self.conn.execute(f"PRAGMA table_info({table})")
+                cols = {row[1] for row in await cur.fetchall()}
+                if column not in cols:
+                    await self.conn.execute(
+                        f"ALTER TABLE {table} ADD COLUMN {column} {ctype}")
+                    log.info("Migrated: %s.%s added", table, column)
+            except Exception:  # noqa: BLE001 — migrations must never be fatal
+                log.exception("Migration failed for %s.%s", table, column)
+        await self.conn.commit()
 
     async def close(self) -> None:
         if self._conn:
@@ -118,7 +137,8 @@ class Database:
         return dict(row) if row else {"guild_id": guild_id}
 
     async def update_welcome_setting(self, guild_id: int, key: str, value: Any) -> None:
-        allowed = {"welcome_title", "welcome_message", "dm_message", "image_style"}
+        allowed = {"welcome_title", "welcome_message", "dm_message",
+                   "dm_banner_url", "image_style"}
         if key not in allowed:
             raise ValueError(f"Unknown welcome setting: {key}")
         await self._execute(

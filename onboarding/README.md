@@ -45,6 +45,34 @@ scams and abuse. The server owner receives **private Telegram notifications**
 
 ---
 
+### 🚀 v2.0 Upgrade — 3-Level Warnings, Premium DM & Member Intelligence
+
+| Feature | Description |
+|---|---|
+| 💬⚠️🔨 **3-Level Warning System** | `/warn issue` escalates: **L1** friendly reminder (no punishment) → **L2** official warning (stored permanently) → **L3** auto **kick/ban** (configurable) with DM explanation, full history snapshot & Telegram report. `/warn history · clear · config` |
+| 💎 **Premium Welcome DM** | 4 themed embeds (👋 Welcome → 🚀 Start Here → 📜 Rules → 🎉 Community) with **animated GIF banner**, server logo, nice colors and link buttons: 📜 Rules · 📖 Community Guide · 💬 Chill Zone · 🆘 Support · 🤝 Invite Friends · 🌐 Website. Graceful fallback to the classic v1 DM |
+| 🎬 **Welcome Animation** | High-quality animated GIF banners (Discord embeds can't autoplay MP4 — GIF is the supported alternative, used automatically). Custom banner per guild via `dm_banner_url` |
+| 🗂 **Member Intelligence DB** | One permanent record per member: username/global/display/nick, bot flag, created/joined dates, roles, highest role, key permissions, avatar/guild-avatar/banner URLs, accent color, status & activities (presence intent optional), badges/public flags, booster status, timeout status, pending screening, invite attribution, join/leave/rejoin counters, collected/updated/last-seen timestamps |
+| 📜 **Change History** | Username, global name, nickname, avatar, banner, roles, booster & timeout changes → append-only `profile_history` + Telegram change reports |
+| 🗃 **Existing-Members Scan** | First startup scans **every existing member** in batches (200/transaction, gateway-streamed, zero HTTP calls) — marked `Imported=True, Welcome Sent=False`, **no welcome messages sent**. `/intel rescan` re-runs on demand |
+| 📲 **Telegram Security Logs** | Formatted reports for: new user / rejoin / leave, profile changes, warnings L1-L3, kick/ban final actions, scan completion — with the `━━━` report layout |
+| 🔍 **/intel Dashboard** | `/intel profile · history · note · rescan · stats` — full record lookups, change history, security notes, DB statistics (admin-only) |
+
+#### ⚠️ Discord API limitations (documented honestly)
+
+| Requested | Status | Closest supported alternative |
+|---|---|---|
+| Connected accounts (GitHub/Spotify/Steam/…) | ❌ Not exposed to bots (OAuth2 user-consent only) | `connected_accounts` table exists for forward-compatibility; **never scraped** |
+| About Me / bio, pronouns | ❌ Not exposed to bots | Custom status is collected when presence intent is on |
+| Mutual server count | ❌ Not exposed | — |
+| Join source | ❌ Not exposed | Invite-usage diffing attribution (already implemented) |
+| Online status / activities | ⚠️ Privileged **PRESENCES** intent | Set `ENABLE_PRESENCE_INTENT=true` + enable in Dev Portal; stored as `unknown` otherwise |
+| MP4 autoplay in embeds | ❌ Not supported by Discord | Animated GIF banners (used automatically) |
+
+Nothing outside the official Bot API is ever used — no self-bots, no scraping.
+
+---
+
 ## 🏗 Architecture
 
 ```

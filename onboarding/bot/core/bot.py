@@ -16,7 +16,9 @@ from discord.ext import commands
 from bot.core.config import Config
 from bot.core.logging import get_logger
 from bot.database.db import Database
+from bot.database.intel_store import IntelStore
 from bot.database.security_store import SecurityStore
+from bot.services.intel.collector import ProfileCollector
 from bot.services.invites import InviteTracker
 from bot.services.security.actions import ActionExecutor
 from bot.services.security.ai_moderation import AIModerationClient
@@ -41,6 +43,9 @@ class ForgeBot(commands.Bot):
         intents.members = True          # member join events
         intents.message_content = True  # first-message detection
         intents.invites = True          # invite tracking
+        if config.enable_presence_intent:
+            # optional privileged intent — richer status/activity collection
+            intents.presences = True
 
         super().__init__(
             command_prefix=commands.when_mentioned_or("!forge "),
@@ -55,6 +60,10 @@ class ForgeBot(commands.Bot):
         self.telegram = TelegramNotifier(config.telegram, self.db)
         self.invite_tracker = InviteTracker()
         self.image_generator = WelcomeImageGenerator()
+
+        # ── member intelligence (v2.0) — shared with all cogs ──
+        self.intel_store = IntelStore(self.db)
+        self.profile_collector = ProfileCollector(self)
 
         # ── security services (Part 2) — shared with all cogs ──
         self.security_store = SecurityStore(self.db)

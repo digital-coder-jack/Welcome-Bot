@@ -165,6 +165,7 @@ CREATE TABLE IF NOT EXISTS welcome_settings (
     welcome_title   TEXT,
     welcome_message TEXT,
     dm_message      TEXT,
+    dm_banner_url   TEXT,               -- v2.0: custom animated GIF banner
     image_style     TEXT DEFAULT 'tech-blue',
     updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );

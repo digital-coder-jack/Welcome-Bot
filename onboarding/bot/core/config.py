@@ -82,6 +82,12 @@ class Config:
     """Top-level application configuration."""
 
     discord_token: str = field(default_factory=lambda: _env("DISCORD_TOKEN", required=True))
+    # v2.0: optional privileged PRESENCES intent — enables status/activity
+    # collection in the member intelligence module. Must ALSO be enabled in
+    # the Discord Developer Portal. Off by default.
+    enable_presence_intent: bool = field(
+        default_factory=lambda: _env_bool("ENABLE_PRESENCE_INTENT", False)
+    )
     database_path: Path = field(
         default_factory=lambda: Path(_env("DATABASE_PATH", "data/developer_forge.db"))
     )

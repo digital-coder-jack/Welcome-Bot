@@ -18,6 +18,7 @@ from discord.ext import commands
 from bot.core.logging import get_logger
 from bot.services.invites import InviteHit
 from bot.utils.embeds import build_welcome_dm_embed, build_welcome_embed
+from bot.utils.premium_dm import build_premium_dm_embeds, build_premium_dm_view
 from bot.utils.formatting import human_age, utcnow
 from bot.utils.views import build_welcome_view
 
@@ -215,12 +216,27 @@ class Welcome(commands.Cog):
             log.exception("Welcome message failed for %s", member.id)
 
     async def _send_welcome_dm(self, member: discord.Member, settings: dict) -> bool:
+        """v2.0 premium multi-embed DM with graceful fallback to the classic
+        single-embed DM if the premium payload is rejected for any reason."""
         try:
             welcome_settings = await self.bot.db.get_welcome_settings(member.guild.id)
-            embed = build_welcome_dm_embed(
-                member, settings, welcome_settings, self.bot.config.defaults.footer
-            )
-            await member.send(embed=embed)
+            try:
+                embeds = build_premium_dm_embeds(
+                    member, settings, welcome_settings,
+                    self.bot.config.defaults.footer,
+                )
+                view = build_premium_dm_view(member, settings)
+                kwargs: dict = {"embeds": embeds}
+                if view:
+                    kwargs["view"] = view
+                await member.send(**kwargs)
+            except discord.HTTPException:
+                # fallback: classic single-embed welcome DM (v1 behaviour)
+                embed = build_welcome_dm_embed(
+                    member, settings, welcome_settings,
+                    self.bot.config.defaults.footer,
+                )
+                await member.send(embed=embed)
             await self.bot.db.log_dm(member.guild.id, member.id, "welcome", True)
             await self.bot.db.set_member_flag(member.guild.id, member.id, "dm_sent", 1)
             return True
