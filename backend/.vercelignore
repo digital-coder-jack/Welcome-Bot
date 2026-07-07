@@ -1,0 +1,8 @@
+# Local-only files — never upload to Vercel
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.log
+.pytest_cache/

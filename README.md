@@ -16,6 +16,16 @@ The project is split into independent services:
 The bot talks to the backend **only** through two HTTP endpoints, keeping the
 two halves cleanly decoupled.
 
+## 🚀 Deployment
+
+| Component | Platform | Config |
+|---|---|---|
+| `backend/` | **Vercel** (serverless) | `backend/vercel.json` + `backend/api/index.py` — set Root Directory to `backend`, add `GROQ_API_KEY` env var |
+| `bot/` | **Wispbyte** (Node.js egg) | startup file `src/index.js`, point `AI_BACKEND_URL` to your Vercel URL |
+| `onboarding/` | **Wispbyte** (Python egg) | startup file `main.py` |
+
+📖 **Full step-by-step instructions: [`DEPLOYMENT.md`](DEPLOYMENT.md)**
+
 ---
 
 ## Architecture
