@@ -65,6 +65,19 @@ class Defaults:
 
 
 @dataclass(frozen=True)
+class SecurityConfig:
+    """Global security credentials — per-guild behaviour lives in the DB."""
+
+    # Direct Groq API for AI moderation (recommended)
+    groq_api_key: str = field(default_factory=lambda: _env("GROQ_API_KEY"))
+    groq_model: str = field(
+        default_factory=lambda: _env("GROQ_MODEL", "llama-3.3-70b-versatile")
+    )
+    # Optional: reuse the FastAPI moderation backend instead of direct Groq
+    moderation_api_url: str = field(default_factory=lambda: _env("MODERATION_API_URL"))
+
+
+@dataclass(frozen=True)
 class Config:
     """Top-level application configuration."""
 
@@ -76,6 +89,7 @@ class Config:
     log_file: str = field(default_factory=lambda: _env("LOG_FILE", "logs/bot.log"))
     assets_dir: Path = field(default_factory=lambda: Path(_env("ASSETS_DIR", "assets")))
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
+    security: SecurityConfig = field(default_factory=SecurityConfig)
     defaults: Defaults = field(default_factory=Defaults)
 
 

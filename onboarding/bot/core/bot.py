@@ -16,7 +16,15 @@ from discord.ext import commands
 from bot.core.config import Config
 from bot.core.logging import get_logger
 from bot.database.db import Database
+from bot.database.security_store import SecurityStore
 from bot.services.invites import InviteTracker
+from bot.services.security.actions import ActionExecutor
+from bot.services.security.ai_moderation import AIModerationClient
+from bot.services.security.badwords import BadWordFilter
+from bot.services.security.raid import RaidDetector
+from bot.services.security.risk import RiskAnalyzer
+from bot.services.security.scam import ScamScanner
+from bot.services.security.spam import SpamDetector
 from bot.services.telegram import TelegramNotifier
 from bot.services.welcome_image import WelcomeImageGenerator
 
@@ -48,12 +56,27 @@ class ForgeBot(commands.Bot):
         self.invite_tracker = InviteTracker()
         self.image_generator = WelcomeImageGenerator()
 
+        # ── security services (Part 2) — shared with all cogs ──
+        self.security_store = SecurityStore(self.db)
+        self.risk_analyzer = RiskAnalyzer()
+        self.raid_detector = RaidDetector()
+        self.spam_detector = SpamDetector()
+        self.scam_scanner = ScamScanner()
+        self.badword_filter = BadWordFilter()
+        self.action_executor = ActionExecutor(self.security_store)
+        self.ai_moderation = AIModerationClient(
+            groq_api_key=config.security.groq_api_key,
+            groq_model=config.security.groq_model,
+            backend_url=config.security.moderation_api_url,
+        )
+
     # ── lifecycle ────────────────────────────────────────────
 
     async def setup_hook(self) -> None:
         await self.db.connect()
         await self.telegram.start()
         await self.image_generator.start()
+        await self.ai_moderation.start()
         await self._load_cogs()
         await self.tree.sync()
         log.info("Slash commands synced")
@@ -87,6 +110,7 @@ class ForgeBot(commands.Bot):
 
     async def close(self) -> None:
         log.info("Shutting down…")
+        await self.ai_moderation.close()
         await self.telegram.close()
         await self.image_generator.close()
         await self.db.close()

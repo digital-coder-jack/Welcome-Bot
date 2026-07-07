@@ -17,7 +17,8 @@ from bot.core.logging import get_logger
 
 log = get_logger("database")
 
-_SCHEMA_PATH = Path(__file__).parent / "schema.sql"
+# All schema*.sql files in this package are applied on connect (additive).
+_SCHEMA_DIR = Path(__file__).parent
 
 
 def _now() -> str:
@@ -37,7 +38,9 @@ class Database:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = await aiosqlite.connect(self._path)
         self._conn.row_factory = aiosqlite.Row
-        await self._conn.executescript(_SCHEMA_PATH.read_text(encoding="utf-8"))
+        for schema in sorted(_SCHEMA_DIR.glob("schema*.sql")):
+            await self._conn.executescript(schema.read_text(encoding="utf-8"))
+            log.debug("Applied schema: %s", schema.name)
         await self._conn.commit()
         log.info("Database ready at %s", self._path)
 
@@ -60,6 +63,15 @@ class Database:
     async def _fetchone(self, sql: str, params: tuple = ()) -> aiosqlite.Row | None:
         async with self.conn.execute(sql, params) as cur:
             return await cur.fetchone()
+
+    async def _fetchall(self, sql: str, params: tuple = ()) -> list[aiosqlite.Row]:
+        async with self.conn.execute(sql, params) as cur:
+            return list(await cur.fetchall())
+
+    # public escape hatches for domain stores (e.g. SecurityStore)
+    execute = _execute
+    fetchone = _fetchone
+    fetchall = _fetchall
 
     # ── guild settings (dashboard) ───────────────────────────
 
