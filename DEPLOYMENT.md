@@ -141,5 +141,7 @@ Create a second Wispbyte server using the **Python** egg (Python **3.11+**).
 - [ ] `curl https://<project>.vercel.app/health` returns 200
 - [ ] JS bot online in Discord, `/warn` commands registered
 - [ ] Onboarding bot online, `/forge settings` responds
+- [ ] v2.0: Telegram received the "Initial Member Scan Complete" report
+- [ ] v2.0: `/warn config` + `/intel stats` respond (slash commands synced)
 - [ ] Test a member join → welcome embed + card + Telegram notification
 - [ ] First message in #chill-zone → 🔥 Forge Member awarded

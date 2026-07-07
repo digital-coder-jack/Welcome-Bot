@@ -103,14 +103,20 @@ onboarding/
     │       ├── ai_moderation.py# Groq client (direct or backend proxy), fail-open
     │       ├── actions.py      # Punishment executor + raid lockdown (audited)
     │       └── alerts.py       # Telegram security alert builders
+    ├── services/intel/         # v2.0 member intelligence
+    │   ├── collector.py        # Official-API-only profile snapshots
+    │   └── reports.py          # Telegram security report builders
     ├── cogs/
-    │   ├── welcome.py          # Member-join pipeline
+    │   ├── welcome.py          # Member-join pipeline (v2.0 premium DM)
     │   ├── activity.py         # First-message 🔥 Forge Member unlock
     │   ├── admin.py            # /forge configuration dashboard
     │   ├── security.py         # Real-time protection pipeline (joins + messages)
-    │   └── security_admin.py   # /security configuration dashboard
+    │   ├── security_admin.py   # /security configuration dashboard
+    │   ├── warnings3.py        # v2.0 /warn 3-level warning system
+    │   └── intel.py            # v2.0 /intel member intelligence + first-run scan
     └── utils/
         ├── embeds.py           # Premium blue-theme embed builders
+        ├── premium_dm.py       # v2.0 multi-embed welcome DM + GIF banners
         ├── views.py            # Configurable welcome buttons
         └── formatting.py       # Timestamps, account age, ordinals
 ```
@@ -127,6 +133,9 @@ No rewiring of the welcome system needed.
 ### 1. Discord Application
 1. Create an app at <https://discord.com/developers/applications>
 2. **Bot** tab → enable **SERVER MEMBERS INTENT** and **MESSAGE CONTENT INTENT**
+   *(optional for v2.0)* also enable **PRESENCE INTENT** and set
+   `ENABLE_PRESENCE_INTENT=true` in `.env` for live status/activity collection
+   *(also grant `Kick Members` / `Ban Members` for the Level-3 warning action)*
 3. Invite with permissions: `Manage Roles`, `Send Messages`, `Embed Links`,
    `Attach Files`, `Add Reactions`, `Manage Server` (for invite tracking)
 4. Make sure the bot's role sits **above** the New Member / Forge Member roles.
@@ -181,6 +190,30 @@ python main.py
 /security warnings   member:@user
 ```
 
+### 7. v2.0 — Warnings & Member Intelligence (moderator / admin)
+```
+# 3-level warning system (Moderate Members permission)
+/warn issue    member:@user reason:Spamming memes in #general
+/warn history  member:@user            # full warning + action history
+/warn clear    member:@user            # reset to Level 1 (admin)
+/warn config   level3_action:ban dm_on_warn:true reset_after_action:true
+
+# member intelligence database (Administrator permission)
+/intel profile  member:@user           # complete intelligence record
+/intel history  member:@user           # username/nickname/avatar/role changes
+/intel note     member:@user note:Verified via modmail
+/intel rescan                          # force a full member re-scan
+/intel stats                           # database statistics
+
+# customise the premium welcome DM (optional)
+/forge messages dm_message:Your custom intro...
+/forge messages dm_banner_url:https://media.giphy.com/media/.../giphy.gif
+```
+> **First startup:** the bot automatically scans every existing member into
+> the intelligence database (marked `Imported=True`, `Welcome Sent=False`) —
+> **no welcome messages are sent** during the import. Watch your Telegram
+> for the scan-complete report.
+
 ---
 
 ## 🗄 Data Model (key columns)
@@ -197,6 +230,16 @@ python main.py
 `evidence`, `action_taken`, `moderator_id`, `telegram_status`, `created_at`),
 `warnings`, `punishments`, `raid_history`, `risk_scores`,
 `ai_moderation_results` + `spam_history` / `scam_history` views.
+
+**v2.0 Intelligence tables:** `user_profiles` (one permanent record per member —
+identity, roles, permissions, avatar/banner/accent, badges, booster/timeout
+status, invite attribution, `join_count`/`leave_count`/`rejoin_count`,
+`imported`, `welcome_sent`, `in_guild`, `security_notes`, `telegram_log_id`,
+`collected_at`/`updated_at`/`last_seen`), `profile_history` (append-only field
+changes), `member_events` (join/leave/rejoin/import/kick/ban lifecycle log),
+`connected_accounts` (forward-compat, official-API only), `intel_scan_state`
+(first-run scan bookkeeping), `warning_settings` (3-level system config) and
+`mod_actions` (moderator action audit with history snapshots).
 
 ---
 

@@ -214,12 +214,14 @@ class ForgeConfig(commands.GroupCog, group_name="forge"):
     @app_commands.describe(
         dm_message="Custom welcome DM body (leave empty to keep)",
         welcome_message="Custom public welcome text (leave empty to keep)",
+        dm_banner_url="v2.0: custom animated GIF banner URL for the premium DM",
     )
     async def messages(
         self,
         interaction: discord.Interaction,
         dm_message: str | None = None,
         welcome_message: str | None = None,
+        dm_banner_url: str | None = None,
     ) -> None:
         assert interaction.guild is not None
         gid = interaction.guild.id
@@ -230,6 +232,14 @@ class ForgeConfig(commands.GroupCog, group_name="forge"):
         if welcome_message is not None:
             await self.bot.db.update_welcome_setting(gid, "welcome_message", welcome_message)
             changes.append("welcome message")
+        if dm_banner_url is not None:
+            if dm_banner_url and not dm_banner_url.startswith(("http://", "https://")):
+                await interaction.response.send_message(
+                    "⚠️ Banner URL must start with http(s)://", ephemeral=True)
+                return
+            await self.bot.db.update_welcome_setting(
+                gid, "dm_banner_url", dm_banner_url or None)
+            changes.append("DM banner GIF")
         if not changes:
             await interaction.response.send_message(
                 "ℹ️ Nothing to update.", ephemeral=True)
