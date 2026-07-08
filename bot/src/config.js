@@ -109,6 +109,9 @@ export function validateConfig() {
     ['CLIENT_ID', config.clientId],
   ];
 
+  console.log("config.token =", JSON.stringify(config.token));
+  console.log("config.clientId =", JSON.stringify(config.clientId));
+
   const missing = required
     .filter(([, value]) => !value || value.startsWith('your-'))
     .map(([key]) => key);
