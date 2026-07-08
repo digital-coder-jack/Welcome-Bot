@@ -15,7 +15,11 @@
  * ---------------------------------------------------------------------------
  */
 
-import 'dotenv/config';
+import dotenv from 'dotenv';
+
+const result = dotenv.config();
+
+console.log(result);
 
 /**
  * Read an environment variable as an integer, falling back to `fallback`
