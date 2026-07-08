@@ -11,7 +11,9 @@ root informational endpoint. Run with:
     python -m app.main
 ---------------------------------------------------------------------------
 """
-
+from app.routes.telegram import router as telegram_router
+app.include_router(moderation_router)
+app.include_router(telegram_router)
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
