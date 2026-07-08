@@ -17,9 +17,11 @@
 
 import dotenv from 'dotenv';
 
-const result = dotenv.config();
+dotenv.config({ override: false });
 
-console.log(result);
+console.log("DEV_INTRO_CHANNEL_ID =", process.env.DEV_INTRO_CHANNEL_ID);
+console.log("FORGE_MEMBER_ROLE_ID =", process.env.FORGE_MEMBER_ROLE_ID);
+console.log("AI_BACKEND_URL =", process.env.AI_BACKEND_URL);
 
 /**
  * Read an environment variable as an integer, falling back to `fallback`
