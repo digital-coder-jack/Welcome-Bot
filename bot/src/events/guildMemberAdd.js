@@ -58,19 +58,21 @@ export default {
     }
 
     // 3. DM the server rules.
-    try {
-      await member.send({ embeds: [rulesDMEmbed(member.guild.name)] });
-    } catch {
-      logger.debug(`Could not DM rules to ${member.user.tag} (DMs likely closed).`);
-    }
+   try {
+  await member.send({
+    embeds: [
+      welcomeDMEmbed(member),
+      rulesDMEmbed(member.guild.name)
+    ]
+  });
+} catch (error) {
+  logger.warn(`Failed to send welcome DM: ${error.message}`);
+}
 
     // 4. Log the join.
-    await sendLog(member.guild, {
-      action: 'Member Joined',
-      color: COLORS.welcome,
-      userTag: member.user.tag,
-      userId: member.id,
-      extraFields: [{ name: 'Account Created', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`, inline: true }],
-    });
-  },
-};
+  import {
+  COLORS,
+  welcomeEmbed,
+  rulesDMEmbed,
+  welcomeDMEmbed
+} from '../utils/embeds.js';
