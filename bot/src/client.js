@@ -29,6 +29,7 @@ export function createClient() {
       GatewayIntentBits.MessageContent,
       GatewayIntentBits.GuildModeration,
       GatewayIntentBits.DirectMessages,
+      GatewayIntentBits.GuildInvites, // invite tracking (which invite was used)
     ],
     // Partials let us receive events for uncached objects (e.g. DM channels).
     partials: [Partials.Channel, Partials.GuildMember, Partials.Message],

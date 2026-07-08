@@ -19,10 +19,6 @@ import dotenv from 'dotenv';
 
 dotenv.config({ override: false });
 
-console.log("DEV_INTRO_CHANNEL_ID =", process.env.DEV_INTRO_CHANNEL_ID);
-console.log("FORGE_MEMBER_ROLE_ID =", process.env.FORGE_MEMBER_ROLE_ID);
-console.log("AI_BACKEND_URL =", process.env.AI_BACKEND_URL);
-
 /**
  * Read an environment variable as an integer, falling back to `fallback`
  * when the variable is missing or not a valid number.
@@ -61,9 +57,10 @@ export const config = Object.freeze({
     welcome: envStr('WELCOME_CHANNEL_ID'),
     goodbye: envStr('GOODBYE_CHANNEL_ID'),
     log: envStr('LOG_CHANNEL_ID'),
+    devIntro: envStr('DEV_INTRO_CHANNEL_ID'),
   }),
   roles: Object.freeze({
-    explorer: envStr('FORGE_MEMBER_ROLE_ID'),
+    forgeMember: envStr('FORGE_MEMBER_ROLE_ID'),
   }),
 
   // --- AI backend (FastAPI + Groq) ---
@@ -114,9 +111,6 @@ export function validateConfig() {
     ['DISCORD_TOKEN', config.token],
     ['CLIENT_ID', config.clientId],
   ];
-
-  console.log("config.token =", JSON.stringify(config.token));
-  console.log("config.clientId =", JSON.stringify(config.clientId));
 
   const missing = required
     .filter(([, value]) => !value || value.startsWith('your-'))

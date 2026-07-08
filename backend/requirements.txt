@@ -9,5 +9,8 @@ pydantic-settings==2.7.1
 # Groq API client
 groq==0.13.1
 
+# Async HTTP client (Telegram Bot API)
+httpx==0.28.1
+
 # Environment variables
 python-dotenv==1.0.1

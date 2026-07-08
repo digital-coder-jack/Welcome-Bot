@@ -20,6 +20,7 @@ import { logger } from '../utils/logger.js';
 import { runAllFilters } from './index.js';
 import { analyzeMessage } from '../services/aiClient.js';
 import { deleteMessage, issueWarning } from '../services/moderationService.js';
+import { reportAIViolation } from '../services/securityService.js';
 
 /** Confidence below which we ignore an AI "violation" to avoid false positives. */
 const AI_CONFIDENCE_THRESHOLD = 0.75;
@@ -74,7 +75,14 @@ export async function moderateMessage(message) {
       `(rule ${result.rule}, ${Math.round(result.confidence * 100)}%): ${result.reason}`
   );
 
-  // Log the AI decision itself before taking action.
+  // Security handler: relay the AI violation to Telegram via the backend.
+  try {
+    await reportAIViolation(message, result);
+  } catch (error) {
+    logger.warn(`Security alert for AI violation failed: ${error.message}`);
+  }
+
+  // Act on the AI decision.
   await deleteOrWarnFromAI(message, result);
 }
 

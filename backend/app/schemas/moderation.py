@@ -54,3 +54,4 @@ class HealthResponse(BaseModel):
     status: str = Field(..., description="'ok' when the service is healthy.")
     groq_configured: bool = Field(..., description="Whether a Groq API key is configured.")
     model: str = Field(..., description="The Groq model in use.")
+    telegram_configured: bool = Field(False, description="Whether Telegram notifications are configured.")

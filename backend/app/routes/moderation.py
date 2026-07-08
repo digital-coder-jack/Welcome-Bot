@@ -1,26 +1,25 @@
 """
 routes/moderation.py
 ---------------------------------------------------------------------------
-HTTP endpoints exposed to the Discord bot:
+AI moderation endpoint exposed to the Discord bot:
 
   POST /moderate  -> analyse a message and return a moderation decision.
-  GET  /health    -> readiness/liveness probe with backend status.
 
-The bot communicates with this backend ONLY through these two endpoints.
+(The health probe now lives in routes/health.py; the /health path is
+unchanged, so the bot's existing client keeps working.)
 ---------------------------------------------------------------------------
 """
 
 from fastapi import APIRouter
 
-from app.schemas.moderation import HealthResponse, ModerationRequest, ModerationResponse
+from app.schemas.moderation import ModerationRequest, ModerationResponse
 from app.services.groq_service import groq_service
-from app.utils.config import settings
 from app.utils.logger import logger
 
-router = APIRouter()
+router = APIRouter(tags=["moderation"])
 
 
-@router.post("/moderate", response_model=ModerationResponse, tags=["moderation"])
+@router.post("/moderate", response_model=ModerationResponse)
 async def moderate(request: ModerationRequest) -> ModerationResponse:
     """
     Analyse a single Discord message for rule violations.
@@ -39,13 +38,3 @@ async def moderate(request: ModerationRequest) -> ModerationResponse:
         result.confidence,
     )
     return result
-
-
-@router.get("/health", response_model=HealthResponse, tags=["system"])
-async def health() -> HealthResponse:
-    """Report service health and configuration status."""
-    return HealthResponse(
-        status="ok",
-        groq_configured=settings.groq_configured,
-        model=settings.groq_model,
-    )

@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     groq_model: str = "llama-3.3-70b-versatile"
 
+    # --- Telegram ---
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+
     # --- Server ---
     host: str = "0.0.0.0"
     port: int = 8000
@@ -51,6 +55,15 @@ class Settings(BaseSettings):
     def groq_configured(self) -> bool:
         """Whether a real Groq API key has been provided."""
         return bool(self.groq_api_key) and not self.groq_api_key.startswith("your-")
+
+    @property
+    def telegram_configured(self) -> bool:
+        """Whether both the Telegram bot token and chat id are provided."""
+        return (
+            bool(self.telegram_bot_token)
+            and bool(self.telegram_chat_id)
+            and not self.telegram_bot_token.startswith("your-")
+        )
 
 
 @lru_cache

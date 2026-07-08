@@ -1,244 +1,142 @@
-# Discord Welcome & AI Moderation Bot
+# Discord Welcome, AI Moderation & Telegram Notification System
 
 A production-ready Discord bot that welcomes new members, enforces server rules
-with layered auto-moderation, and uses an **AI backend (FastAPI + Groq)** to
-detect nuanced abuse such as toxicity, harassment, hate speech, threats and
-personal attacks.
+with layered auto-moderation, uses an **AI backend (FastAPI + Groq)** to detect
+nuanced abuse, and relays **every notable event to Telegram** (joins, leaves,
+warnings, kicks, bans, security alerts) through a single FastAPI backend.
 
-The project is split into independent services:
+## Project Overview
 
-| Service        | Stack                                     | Responsibility                                  |
-|----------------|-------------------------------------------|--------------------------------------------------|
-| **bot/**       | Node.js · Discord.js v14 · ES Modules     | Discord client, welcome/goodbye, warnings, auto-mod |
-| **backend/**   | Python 3.12+ · FastAPI · Groq · Pydantic  | AI message analysis (`/moderate`, `/health`)    |
-| **onboarding/**| Python 3.12+ · discord.py 2.x · aiosqlite · Pillow | ⚡ **Developer Forge premium Welcome & Onboarding System v2.0** — welcome embeds + generated welcome cards, **premium multi-embed welcome DM with animated GIF banner & buttons**, auto roles, invite tracking, first-message 🔥 Forge Member unlock, **3-level warning system (reminder → official warning → auto kick/ban)**, **member intelligence database with existing-members scan, change history & join/leave/rejoin tracking**, private **Telegram security logs**, `/forge` `/security` `/warn` `/intel` dashboards. See [`onboarding/README.md`](onboarding/README.md). |
+- **Name**: welcome-bot
+- **Goal**: One Discord.js bot + one FastAPI backend that together provide the
+  complete welcome, moderation, security and Telegram-notification pipeline.
+- **Architecture**:
 
-The bot talks to the backend **only** through two HTTP endpoints, keeping the
-two halves cleanly decoupled.
+```
+Discord Bot (bot/, Discord.js v14 — Wispbyte)
+        │ HTTPS (fetch)
+        ▼
+FastAPI Backend (backend/ — Vercel)  ←  the SINGLE API
+        │ Telegram Bot API (httpx)
+        ▼
+Telegram (owner notifications)
+```
 
-## 🚀 Deployment
+| Service      | Stack                                    | Responsibility |
+|--------------|------------------------------------------|----------------|
+| **bot/**     | Node.js · Discord.js v14 · ES Modules    | Discord client: welcome system, warnings, auto-mod, invite tracking, security detection |
+| **backend/** | Python 3.12+ · FastAPI · Groq · httpx    | AI moderation (`/moderate`), health (`/health`), **all Telegram notifications** (`/telegram/*`) |
 
-| Component | Platform | Config |
-|---|---|---|
-| `backend/` | **Vercel** (serverless) | `backend/vercel.json` + `backend/api/index.py` — set Root Directory to `backend`, add `GROQ_API_KEY` env var |
-| `bot/` | **Wispbyte** (Node.js egg) | startup file `src/index.js`, point `AI_BACKEND_URL` to your Vercel URL |
-| `onboarding/` | **Wispbyte** (Python egg) | startup file `main.py` |
+> ⚠️ **`onboarding/` is DEPRECATED** and must not be deployed. All of its
+> Telegram/security features were migrated into `backend/` + `bot/`.
+> See [`onboarding/DEPRECATED.md`](onboarding/DEPRECATED.md).
 
-📖 **Full step-by-step instructions: [`DEPLOYMENT.md`](DEPLOYMENT.md)**
+## Backend API
 
----
+| Method | Path                        | Purpose |
+|--------|-----------------------------|---------|
+| POST   | `/moderate`                 | AI moderation analysis (Groq, heuristic fallback) — **unchanged** |
+| GET    | `/health`                   | Liveness probe + Groq/Telegram config status — **unchanged path** |
+| POST   | `/telegram/member-joined`   | Full join intelligence report → Telegram |
+| POST   | `/telegram/member-left`     | Departure notification → Telegram |
+| POST   | `/telegram/warning`         | Warning issued → Telegram |
+| POST   | `/telegram/kick`            | Member kicked → Telegram |
+| POST   | `/telegram/ban`             | Member banned → Telegram |
+| POST   | `/telegram/security-alert`  | Raid / scam / AI-violation alerts → Telegram |
 
-## Architecture
+The join notification includes: Username, Display Name, User ID, Server Name,
+Join Time, Account Created, Account Age, Member Number, Invite Code, Inviter,
+Bot or Human, Avatar URL (sent as photo), Assigned Role, DM Status, and the
+Server Invite Used.
+
+## Welcome System (on member join)
+
+1. Welcome embed in the welcome channel
+2. Animated welcome DM (GIF banner) + server rules DM
+3. **Forge Member** role auto-assigned
+4. Developer Intro message auto-sent to the dev-intro channel
+5. Telegram join notification via the backend
+6. Member information saved to the local member store
+
+Plus: raid detection (8+ joins/60s) and new-account screening (<7 days) fire
+`/telegram/security-alert` automatically.
+
+## Folder Structure
 
 ```
 welcome-bot/
-├── bot/                         # Discord.js v14 client (Node, ES Modules)
-│   ├── src/
-│   │   ├── commands/            # /warn, /warnings, /clearwarnings + deploy script
-│   │   ├── events/             # ready, guildMemberAdd/Remove, messageCreate, interactionCreate
-│   │   ├── handlers/           # dynamic event & command loaders
-│   │   ├── services/           # aiClient (HTTP -> backend), moderationService (engine)
-│   │   ├── filters/            # rule-based auto-mod + pipeline orchestrator
-│   │   ├── utils/              # logger, embeds, rules
-│   │   ├── database/           # file-backed warning store
-│   │   ├── client.js           # Discord client factory (intents/partials)
-│   │   ├── config.js           # env loading + validation + SERVER_RULES
-│   │   └── index.js            # entry point / bootstrap
-│   ├── package.json
-│   ├── .env(.example)
-│   └── .gitignore
+├── bot/                          # Discord.js v14 client (Wispbyte)
+│   └── src/
+│       ├── commands/             # /warn /warnings /clearwarnings /kick /ban + deploy script
+│       ├── events/               # ready, guildMemberAdd/Remove, guildBanAdd, inviteCreate/Delete, messageCreate, interactionCreate
+│       ├── handlers/             # dynamic event & command loaders
+│       ├── services/             # aiClient, telegramClient, inviteTracker, securityService, moderationService
+│       ├── filters/              # rule-based auto-mod + AI pipeline orchestrator
+│       ├── utils/                # logger, embeds, rules, time
+│       ├── database/             # warningStore + memberStore (file-backed JSON)
+│       ├── client.js / config.js / index.js
+│       └── ...
 │
-├── backend/                     # FastAPI + Groq AI moderation service
+├── backend/                      # FastAPI backend (Vercel) — single API
+│   ├── api/index.py              # Vercel serverless entry
 │   ├── app/
-│   │   ├── routes/             # /moderate, /health
-│   │   ├── services/           # groq_service (Groq call + validation + fallback)
-│   │   ├── schemas/            # Pydantic request/response models
-│   │   ├── prompts/            # moderation system prompt (rules + JSON contract)
-│   │   ├── utils/              # config (pydantic-settings) + logger
-│   │   └── main.py             # FastAPI app factory
+│   │   ├── routes/               # moderation.py, telegram.py, health.py
+│   │   ├── services/             # groq_service.py, telegram_service.py
+│   │   ├── schemas/              # moderation.py, telegram.py
+│   │   ├── prompts/              # moderation system prompt
+│   │   ├── utils/                # config.py, logger.py
+│   │   └── main.py
 │   ├── requirements.txt
-│   ├── .env(.example)
-│   └── .gitignore
+│   └── vercel.json
 │
-└── README.md
+└── onboarding/                   # ⚠️ DEPRECATED — do not deploy
 ```
 
----
+## Environment Variables
 
-## Features
+**Backend (Vercel):**
 
-### Welcome System (`events/guildMemberAdd.js`)
-- Sends a welcome **embed** to the welcome channel.
-- Automatically assigns the **Explorer** role.
-- **DMs the server rules** to the new member.
-- Logs the join (with account-age hint) to the log channel.
+| Var | Purpose |
+|---|---|
+| `GROQ_API_KEY` | Groq API key for AI moderation |
+| `GROQ_MODEL` | Model (default `llama-3.3-70b-versatile`) |
+| `TELEGRAM_BOT_TOKEN` | **NEW** — Telegram bot token from @BotFather |
+| `TELEGRAM_CHAT_ID` | **NEW** — chat/channel ID that receives notifications |
 
-### Goodbye System (`events/guildMemberRemove.js`)
-- Sends a goodbye message to the goodbye channel.
-- Logs the departure.
+**Bot (Wispbyte):**
 
-### Warning System (slash commands)
-- `/warn <user> [reason] [rule]` — issue a warning (persisted, DM'd, logged).
-- `/warnings <user>` — list a user's warnings.
-- `/clearwarnings <user>` — clear all warnings (elevated permission).
-- Maximum **3 warnings** (configurable) → user is **automatically kicked**.
-- Every action is logged.
-
-### Auto-Moderation (`filters/`)
-Fast, local, zero-cost detection for:
-- **Spam / flooding** (too many messages in a time window) → Rule 4
-- **Repeated messages** (same content repeated) → Rule 4
-- **Invite links** → Rule 8
-- **Excessive mentions** → Rule 4
-- **Emoji spam** → Rule 4
-- **Caps spam** → Rule 4
-
-Violating messages are deleted and logged.
-
-### AI Moderation (`filters/autoModerator.js` → `backend`)
-Messages that pass the local filters are sent to the FastAPI backend, which uses
-Groq to detect **toxicity, harassment, hate speech, personal attacks, threats**
-and other rule violations. The backend returns a decision and the bot acts on it
-(delete / warn, with warnings auto-escalating to a kick).
-
----
-
-## Server Rules
-
-| # | Rule |
-|---|------|
-| 1 | Be Respectful |
-| 2 | No Hate Speech |
-| 3 | Keep It Appropriate |
-| 4 | No Spamming |
-| 5 | Use Channels Correctly |
-| 6 | No Toxic Behavior |
-| 7 | Respect Privacy |
-| 8 | No Advertising |
-| 9 | Follow Discord Terms of Service |
-| 10 | Listen to Staff |
-
-Moderation decisions reference these numbers (kept in sync between
-`bot/src/config.js` and `backend/app/prompts/moderation_prompt.py`).
-
----
-
-## API Design (backend)
-
-The bot communicates with the backend **only** via these endpoints:
-
-### `POST /moderate`
-Request:
-```json
-{ "content": "message text", "author_id": "123", "channel_id": "456" }
-```
-Response:
-```json
-{
-  "violation": true,
-  "rule": 6,
-  "confidence": 0.97,
-  "reason": "Personal attack",
-  "action": "warn"
-}
-```
-`action` is one of `none` | `delete` | `warn` | `kick`.
-
-### `GET /health`
-```json
-{ "status": "ok", "groq_configured": true, "model": "llama-3.3-70b-versatile" }
-```
-
-Interactive docs are available at `http://localhost:8000/docs`.
-
----
-
-## Setup & Run
-
-### 1. AI Backend (start this first)
-
-```bash
-cd backend
-python3 -m venv .venv && source .venv/bin/activate     # optional but recommended
-pip install -r requirements.txt
-cp .env.example .env                                    # then add your GROQ_API_KEY
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-> Without a `GROQ_API_KEY` the backend still runs and uses a conservative
-> keyword **heuristic fallback**, so you can develop the bot without AI credits.
-
-### 2. Discord Bot
-
-```bash
-cd bot
-npm install
-cp .env.example .env        # fill in DISCORD_TOKEN, CLIENT_ID, channel/role IDs
-npm run deploy              # register slash commands (uses GUILD_ID if set)
-npm start                  # start the bot
-```
-
-### Required Discord setup
-- In the **Developer Portal → Bot → Privileged Gateway Intents**, enable
-  **Server Members Intent** and **Message Content Intent**.
-- Invite the bot with the `bot` + `applications.commands` scopes and the
-  `Kick Members`, `Manage Messages`, `Manage Roles`, `Moderate Members` permissions.
-
----
-
-## Configuration Reference
-
-### Bot (`bot/.env`)
-| Variable | Description |
-|----------|-------------|
-| `DISCORD_TOKEN` | Bot token (required) |
-| `CLIENT_ID` | Application client ID (required) |
-| `GUILD_ID` | Dev guild for instant command registration (optional) |
-| `WELCOME_CHANNEL_ID` / `GOODBYE_CHANNEL_ID` / `LOG_CHANNEL_ID` | Channel IDs |
-| `EXPLORER_ROLE_ID` | Role auto-assigned on join |
-| `AI_BACKEND_URL` | FastAPI base URL (default `http://127.0.0.1:8000`) |
+| Var | Purpose |
+|---|---|
+| `DISCORD_TOKEN`, `CLIENT_ID`, `GUILD_ID` | Discord credentials |
+| `AI_BACKEND_URL` | Vercel backend URL |
+| `WELCOME_CHANNEL_ID`, `GOODBYE_CHANNEL_ID`, `LOG_CHANNEL_ID` | Channels |
+| `DEV_INTRO_CHANNEL_ID` | **NEW** — Developer Intro channel |
+| `FORGE_MEMBER_ROLE_ID` | Forge Member auto-role |
 | `MAX_WARNINGS` | Warnings before auto-kick (default 3) |
-| `SPAM_MESSAGE_LIMIT`, `SPAM_TIME_WINDOW_MS`, `MAX_MENTIONS`, `MAX_EMOJIS`, `CAPS_PERCENT_THRESHOLD`, `CAPS_MIN_LENGTH` | Auto-mod tuning |
 
-### Backend (`backend/.env`)
-| Variable | Description |
-|----------|-------------|
-| `GROQ_API_KEY` | Groq API key (falls back to heuristic if absent) |
-| `GROQ_MODEL` | Groq model (default `llama-3.3-70b-versatile`) |
-| `HOST` / `PORT` | Bind address / port |
-| `MIN_CONFIDENCE` | Violations below this confidence are ignored |
-| `ALLOWED_ORIGINS` | CORS origins |
-| `LOG_LEVEL` | Logging level |
+Config is read **only** from environment variables.
 
----
+## Deployment
 
-## Data & Storage
+| Component | Platform | Notes |
+|---|---|---|
+| `backend/` | **Vercel** | Root Directory = `backend`, add the 4 env vars above |
+| `bot/` | **Wispbyte** (Node.js) | startup `src/index.js`, run `npm install` then `npm run deploy` once to register slash commands |
 
-- **Warnings** are persisted by `bot/src/database/warningStore.js` to a local
-  JSON file (`bot/src/database/data/warnings.json`, git-ignored) using atomic,
-  debounced writes. The store's promise-based API (`addWarning`, `getWarnings`,
-  `countWarnings`, `clearWarnings`) can be swapped for SQLite/Postgres without
-  changing any callers.
-- **Spam/repeat tracking** is kept in-memory with a sliding time window.
+Required Discord permissions/intents: **Manage Guild** (invite tracking),
+**View Audit Log** (ban attribution), **Kick/Ban Members**, and the
+**Guild Members** + **Message Content** privileged intents.
 
----
+## User Guide
 
-## Design Highlights
+- New members are welcomed automatically (embed + DM + role + intro + Telegram).
+- Moderators: `/warn`, `/warnings`, `/clearwarnings`, `/kick`, `/ban`.
+- Every warning/kick/ban and security event lands in your Telegram chat.
+- AI moderation flags toxic messages automatically; high-confidence violations
+  are deleted, warned, and reported to Telegram as security alerts.
 
-- **Fail-open AI client**: if the backend is down or slow, the bot logs a
-  warning and continues — local filters still protect the server.
-- **Single moderation engine**: commands, auto-mod and AI all route through
-  `moderationService`, so DMs, logging and kick-escalation behave identically.
-- **Dynamic loaders**: drop a new file into `events/` or `commands/` and it's
-  picked up automatically — no manual wiring.
-- **Strict AI contract**: Groq is called in JSON mode with `temperature=0`, and
-  every field is re-validated server-side before reaching the bot.
+## Deployment Status
 
----
-
-## Tech Stack
-- **Bot**: Node.js, Discord.js v14, dotenv, undici, ES Modules
-- **Backend**: Python 3.12+, FastAPI, Uvicorn, Groq, Pydantic / pydantic-settings
-
-## License
-MIT — see [LICENSE](LICENSE).
+- **Tech Stack**: Discord.js v14 + FastAPI + Groq + Telegram Bot API
+- **Backend Version**: 2.0.0
+- **Last Updated**: 2026-07-08

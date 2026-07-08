@@ -7,11 +7,17 @@
  * Public actions:
  *   - sendLog(...)        : post a standardised embed to the log channel.
  *   - deleteMessage(...)  : delete a message and log it.
- *   - issueWarning(...)   : add a warning, DM the user, escalate to a kick on
- *                           reaching the configured maximum, and log everything.
+ *   - issueWarning(...)   : add a warning, DM the user, notify Telegram via
+ *                           the backend, escalate to a kick on reaching the
+ *                           configured maximum, and log everything.
+ *   - kickMember(...)     : kick a member, notify Telegram, and log it.
+ *   - banMember(...)      : ban a member, and log it (the Telegram ban
+ *                           notification is sent by the guildBanAdd event so
+ *                           bans by other bots/mods are captured too).
  *
- * Keeping all of this in one place guarantees consistent behaviour and logging
- * no matter what triggered the action (command / auto-mod / AI).
+ * Keeping all of this in one place guarantees consistent behaviour, logging
+ * and Telegram notifications no matter what triggered the action
+ * (command / auto-mod / AI).
  * ---------------------------------------------------------------------------
  */
 
@@ -20,6 +26,9 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { addWarning, countWarnings } from '../database/warningStore.js';
 import { COLORS, moderationLogEmbed, warningDMEmbed } from '../utils/embeds.js';
+import { ruleLabel } from '../utils/rules.js';
+import { formatUTC } from '../utils/time.js';
+import { notifyKick, notifyWarning } from './telegramClient.js';
 
 /**
  * Resolve the configured log channel from a guild, if any.
@@ -88,12 +97,16 @@ export async function deleteMessage(message, { reason, rule = null, source = 'au
 }
 
 /**
- * Attempt to kick a member and log the outcome.
+ * Kick a member, notify Telegram via the backend, and log the outcome.
+ *
  * @param {import('discord.js').GuildMember} member
  * @param {string} reason
+ * @param {object} [options]
+ * @param {string} [options.moderatorTag='Auto-Mod']  who initiated the kick.
+ * @param {number|null} [options.warningCount=null]   warnings at kick time.
  * @returns {Promise<boolean>} whether the kick succeeded.
  */
-async function kickMember(member, reason) {
+export async function kickMember(member, reason, { moderatorTag = 'Auto-Mod', warningCount = null } = {}) {
   // Verify the bot actually has permission and can act on this member.
   const me = member.guild.members.me;
   if (!me?.permissions.has(PermissionFlagsBits.KickMembers) || !member.kickable) {
@@ -103,26 +116,84 @@ async function kickMember(member, reason) {
       color: COLORS.danger,
       userTag: member.user.tag,
       userId: member.id,
-      moderatorTag: 'Auto-Mod',
-      reason: `Reached ${config.maxWarnings} warnings but bot could not kick (permissions/hierarchy).`,
+      moderatorTag,
+      reason: `Kick attempted but bot could not act (permissions/hierarchy). Original reason: ${reason}`,
+    });
+    return false;
+  }
+
+  // Capture identity before the kick (the member object degrades afterwards).
+  const userTag = member.user.tag;
+  const userId = member.id;
+  const guildName = member.guild.name;
+
+  try {
+    await member.kick(reason);
+  } catch (error) {
+    logger.warn(`Failed to kick ${userTag}: ${error.message}`);
+    return false;
+  }
+
+  // Telegram kick notification via the backend (best-effort).
+  try {
+    await notifyKick({
+      username: userTag,
+      user_id: userId,
+      server_name: guildName,
+      reason,
+      moderator: moderatorTag,
+      warning_count: warningCount,
+      timestamp: formatUTC(Date.now()),
+    });
+  } catch (error) {
+    logger.warn(`Telegram kick notification failed: ${error.message}`);
+  }
+
+  await sendLog(member.guild, {
+    action: 'Kick',
+    color: COLORS.danger,
+    userTag,
+    userId,
+    moderatorTag,
+    reason,
+  });
+  logger.info(`Kicked ${userTag}: ${reason}`);
+  return true;
+}
+
+/**
+ * Ban a member and log it. The Telegram ban notification is deliberately
+ * emitted by the guildBanAdd event (not here) so that bans performed by
+ * other moderators/bots are reported identically.
+ *
+ * @param {import('discord.js').GuildMember} member
+ * @param {string} reason
+ * @param {object} [options]
+ * @param {string} [options.moderatorTag='Auto-Mod']
+ * @param {number} [options.deleteMessageSeconds=0]  purge window (max 7 days).
+ * @returns {Promise<boolean>} whether the ban succeeded.
+ */
+export async function banMember(member, reason, { moderatorTag = 'Auto-Mod', deleteMessageSeconds = 0 } = {}) {
+  const me = member.guild.members.me;
+  if (!me?.permissions.has(PermissionFlagsBits.BanMembers) || !member.bannable) {
+    logger.warn(`Cannot ban ${member.user.tag}: insufficient permissions or hierarchy.`);
+    await sendLog(member.guild, {
+      action: 'Ban Failed',
+      color: COLORS.danger,
+      userTag: member.user.tag,
+      userId: member.id,
+      moderatorTag,
+      reason: `Ban attempted but bot could not act (permissions/hierarchy). Original reason: ${reason}`,
     });
     return false;
   }
 
   try {
-    await member.kick(reason);
-    await sendLog(member.guild, {
-      action: 'Kick',
-      color: COLORS.danger,
-      userTag: member.user.tag,
-      userId: member.id,
-      moderatorTag: 'Auto-Mod',
-      reason,
-    });
-    logger.info(`Kicked ${member.user.tag}: ${reason}`);
+    await member.ban({ reason, deleteMessageSeconds });
+    logger.info(`Banned ${member.user.tag}: ${reason}`);
     return true;
   } catch (error) {
-    logger.warn(`Failed to kick ${member.user.tag}: ${error.message}`);
+    logger.warn(`Failed to ban ${member.user.tag}: ${error.message}`);
     return false;
   }
 }
@@ -133,8 +204,10 @@ async function kickMember(member, reason) {
  * Flow:
  *   1. Persist the warning.
  *   2. DM the user (best-effort).
- *   3. Log the warning.
- *   4. If the user has reached the max warnings, kick them and log it.
+ *   3. Send the Telegram warning notification via the backend.
+ *   4. Log the warning.
+ *   5. If the user has reached the max warnings, kick them (which itself
+ *      notifies Telegram and logs).
  *
  * @param {object} params
  * @param {import('discord.js').Guild} params.guild
@@ -168,7 +241,25 @@ export async function issueWarning({ guild, member, reason, moderatorId, moderat
     logger.debug(`Could not DM warning to ${member.user.tag} (DMs likely closed).`);
   }
 
-  // 3. Log the warning.
+  // 3. Telegram warning notification via the backend (best-effort).
+  try {
+    await notifyWarning({
+      username: member.user.tag,
+      user_id: member.id,
+      server_name: guild.name,
+      reason,
+      rule: rule ? ruleLabel(rule) : null,
+      moderator: moderatorTag,
+      warning_count: total,
+      max_warnings: max,
+      source,
+      timestamp: formatUTC(Date.now()),
+    });
+  } catch (error) {
+    logger.warn(`Telegram warning notification failed: ${error.message}`);
+  }
+
+  // 4. Log the warning.
   await sendLog(guild, {
     action: 'Warning',
     color: COLORS.warning,
@@ -181,10 +272,13 @@ export async function issueWarning({ guild, member, reason, moderatorId, moderat
   });
   logger.info(`Warned ${member.user.tag} (${total}/${max}) [${source}]: ${reason}`);
 
-  // 4. Escalate to a kick on reaching the maximum.
+  // 5. Escalate to a kick on reaching the maximum.
   let kicked = false;
   if (total >= max) {
-    kicked = await kickMember(member, `Reached maximum of ${max} warnings.`);
+    kicked = await kickMember(member, `Reached maximum of ${max} warnings.`, {
+      moderatorTag: 'Auto-Mod',
+      warningCount: total,
+    });
   }
 
   return { count: total, max, kicked };
