@@ -61,7 +61,7 @@ export const config = Object.freeze({
     log: envStr('LOG_CHANNEL_ID'),
   }),
   roles: Object.freeze({
-    explorer: envStr('EXPLORER_ROLE_ID'),
+    explorer: envStr('FORGE_MEMBER_ROLE_ID'),
   }),
 
   // --- AI backend (FastAPI + Groq) ---
