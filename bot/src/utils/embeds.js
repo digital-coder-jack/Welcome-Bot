@@ -26,19 +26,29 @@ export const COLORS = Object.freeze({
  * @param {import('discord.js').GuildMember} member
  * @returns {EmbedBuilder}
  */
-export function welcomeEmbed(member) {
+/**
+ * Welcome DM sent to new members.
+ * @param {import('discord.js').GuildMember} member
+ * @returns {EmbedBuilder}
+ */
+export function welcomeDMEmbed(member) {
   return new EmbedBuilder()
     .setColor(COLORS.welcome)
-    .setTitle(`\u{1F44B} Welcome to ${member.guild.name}!`)
+    .setTitle(`👋 Welcome to ${member.guild.name}!`)
+    .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 512 }))
     .setDescription(
-      `Hey ${member}, we're glad to have you here!\n\n` +
-        'You\u2019ve been given the **Explorer** role to get started. ' +
-        'Please check your DMs for the server rules and enjoy your stay!'
+      `Hello ${member.user}!\n\n` +
+      `We're excited to have you in **${member.guild.name}**.\n\n` +
+      `✨ Your Forge Member role has been assigned.\n` +
+      `💬 Introduce yourself in the **#dev-intro** channel.\n` +
+      `📖 Please read the server rules in the next message.\n\n` +
+      `Have fun and enjoy your stay! 🚀`
     )
-    .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
-    .addFields({ name: 'Member Count', value: `You are member #${member.guild.memberCount}`, inline: true })
-    .setTimestamp()
-    .setFooter({ text: `User ID: ${member.id}` });
+    .setFooter({
+      text: `${member.guild.name}`,
+      iconURL: member.guild.iconURL({ dynamic: true })
+    })
+    .setTimestamp();
 }
 
 /**
