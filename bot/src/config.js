@@ -68,7 +68,7 @@ export const config = Object.freeze({
 
   // --- AI backend (FastAPI + Groq) ---
   ai: Object.freeze({
-    baseUrl: envStr('AI_BACKEND_URL', 'http://127.0.0.1:8000'),
+    baseUrl: envStr('AI_BACKEND_URL', 'https://welcome-bot-bice.vercel.app'),
     timeoutMs: envInt('AI_REQUEST_TIMEOUT_MS', 8000),
   }),
 
