@@ -1,4 +1,4 @@
-# ⚡ Developer Forge — Welcome, Onboarding & Security System
+# ⚡ Developer Forge / Forge Guardian — Premium Welcome & Security System
 
 A **production-ready, modular Discord bot** built with the latest
 **discord.py 2.x**. New members get a premium welcome experience (embed +
@@ -49,7 +49,7 @@ scams and abuse. The server owner receives **private Telegram notifications**
 
 | Feature | Description |
 |---|---|
-| 💬⚠️🔨 **3-Level Warning System** | `/warn issue` escalates: **L1** friendly reminder (no punishment) → **L2** official warning (stored permanently) → **L3** auto **kick/ban** (configurable) with DM explanation, full history snapshot & Telegram report. `/warn history · clear · config` |
+| 💬⚠️🚨 **3-Level Warning System** | `/warn issue` escalates: **L1** friendly reminder (no punishment) → **L2** official warning (stored permanently) → **L3** **moderator review** — the bot NEVER auto-kicks/bans; a premium Security Alert with evidence & approval buttons is posted to #security-alerts. `/warn history · clear · config` |
 | 💎 **Premium Welcome DM** | 4 themed embeds (👋 Welcome → 🚀 Start Here → 📜 Rules → 🎉 Community) with **animated GIF banner**, server logo, nice colors and link buttons: 📜 Rules · 📖 Community Guide · 💬 Chill Zone · 🆘 Support · 🤝 Invite Friends · 🌐 Website. Graceful fallback to the classic v1 DM |
 | 🎬 **Welcome Animation** | High-quality animated GIF banners (Discord embeds can't autoplay MP4 — GIF is the supported alternative, used automatically). Custom banner per guild via `dm_banner_url` |
 | 🗂 **Member Intelligence DB** | One permanent record per member: username/global/display/nick, bot flag, created/joined dates, roles, highest role, key permissions, avatar/guild-avatar/banner URLs, accent color, status & activities (presence intent optional), badges/public flags, booster status, timeout status, pending screening, invite attribution, join/leave/rejoin counters, collected/updated/last-seen timestamps |
@@ -70,6 +70,32 @@ scams and abuse. The server owner receives **private Telegram notifications**
 | MP4 autoplay in embeds | ❌ Not supported by Discord | Animated GIF banners (used automatically) |
 
 Nothing outside the official Bot API is ever used — no self-bots, no scraping.
+
+### 🛡 Forge Guardian (Final Update) — Moderator Approval Workflow
+
+> **The core guarantee: the bot NEVER kicks or bans anyone automatically.**
+> Every removal proposal becomes a pending **moderation review** — the
+> punishment only executes after an authorized moderator presses a button.
+
+| Feature | Description |
+|---|---|
+| 🚨 **Security Alerts** | On the 3rd warning (or when auto-mod detects a configured kick/ban punishment) a premium embed is posted to **#security-alerts** with: member mention, username, user ID, account creation date, join date, current roles, warning count, full warning history, complete violation timeline, evidence summary, risk score, confidence level (Low/Medium/High) and recommended action |
+| 🔘 **Approval Buttons** | ⚠️ Issue Final Warning · ⏳ Timeout · 👢 Kick Member · 🔨 Ban Member · ❌ Dismiss · 📄 View Evidence |
+| 🔐 **Button Permissions** | Only **Administrators** or the configured **Security Team role** may act. Unauthorized presses get an ephemeral “You do not have permission to perform this moderation action.” |
+| ⚔️ **Race-Safe Execution** | Atomic DB claim — two moderators can never execute the same action simultaneously. Buttons are disabled immediately after one action completes |
+| 🚫 **No Duplicates** | A UNIQUE partial index guarantees one pending alert per member — repeated violations while a review is open never re-alert |
+| 🧯 **Auto-Mod Containment** | When automatic detection recommends kick/ban, the member gets a short containment timeout while moderators review — slowed, never removed |
+| 🎯 **Accuracy Over Speed** | Low-confidence detections are downgraded to *Manual Review* instead of recommending removal |
+| 🔄 **Restart-Safe Buttons** | Review IDs live in the component `custom_id`s — approval buttons keep working after bot restarts |
+| 📋 **Moderation Logs** | Translated embeds in **#mod-logs** for: member join/leave, kick, ban, unban, timeout applied/removed, warnings, message deletes, role add/remove, security alerts — each with user, moderator, reason, timestamp, channel & evidence |
+| 🌍 **Multi-Language** | `/guardian language` — English · Español · Français · Deutsch · हिन्दी · Português. All warnings, review alerts, member notices, buttons and logs translate; missing keys fall back to English |
+| 📊 **Analytics Dashboard** | `/guardian analytics` — daily/weekly/monthly joins with bars, member growth, 30-day retention, verification success, warnings & moderation actions (7d), pending reviews |
+| ⚙️ **/guardian Commands** | `setup` (alert channel, mod-log channel, Security Team role, owner-DM toggle) · `language` · `reviews` (pending queue with jump links) · `analytics` · `settings` |
+
+**Workflow:** violation detected → evidence + history + timeline collected →
+security alert posted (+ owner DM) → authorized moderator presses a button →
+action executes → member is notified with a clear explanation → mod-log +
+audit DB entry → alert buttons disabled with a “Resolved” banner.
 
 ---
 

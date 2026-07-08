@@ -4,6 +4,13 @@ Action Executor — applies configured punishments safely.
 Centralizes every moderation action (delete / warn / timeout / kick / ban /
 channel lockdown) with permission checks, hierarchy checks, structured
 logging and full DB audit. Never raises into the event pipeline.
+
+FORGE GUARDIAN RULE: apply() — the automatic pipeline entry point — NEVER
+executes kick/ban directly. When the configured punishment is kick or ban
+it opens a moderator review instead; the punishment only happens after an
+authorized moderator approves it via the security-alert buttons. Direct
+kick()/ban() methods remain available for the review manager itself,
+which is only reachable through the approval workflow.
 """
 from __future__ import annotations
 
@@ -27,6 +34,9 @@ class ActionExecutor:
 
     def __init__(self, store: "SecurityStore") -> None:
         self._store = store
+        # injected by ForgeBot after construction — the moderator-approval
+        # workflow used by apply() for kick/ban punishments
+        self.review_manager = None  # type: ignore[assignment]
 
     # ── message level ────────────────────────────────────────
 
@@ -153,14 +163,51 @@ class ActionExecutor:
             if await self.timeout(member, minutes=timeout_minutes,
                                   reason=reason, event_type=event_type):
                 performed.append(f"timeout {timeout_minutes}m")
-        elif punishment == "kick":
-            if await self.kick(member, reason=reason, event_type=event_type):
-                performed.append("kicked")
-        elif punishment == "ban":
-            if await self.ban(member, reason=reason, event_type=event_type):
-                performed.append("banned")
+        elif punishment in ("kick", "ban"):
+            # ⛔ NEVER automatic — open a moderator review instead.
+            label = await self._propose_removal(
+                member, punishment, reason=reason, event_type=event_type)
+            performed.append(label)
 
         return ", ".join(performed) or "logged only"
+
+    async def _propose_removal(
+        self, member: discord.Member, punishment: str, *,
+        reason: str, event_type: str,
+    ) -> str:
+        """Open a moderator review for an auto-detected kick/ban. Falls back
+        to warn + 10-minute containment timeout so the threat is slowed
+        while moderators decide — but the member is never removed."""
+        if self.review_manager is None:  # defensive — should never happen
+            count = await self.warn(member, reason=reason, event_type=event_type)
+            return f"warned (#{count}) — review manager unavailable"
+
+        rows = await self._store._db.fetchall(  # noqa: SLF001 — same package
+            "SELECT reason, created_at FROM warnings "
+            "WHERE guild_id = ? AND user_id = ? ORDER BY id",
+            (member.guild.id, member.id))
+        history = [dict(r) for r in rows]
+
+        review_id = await self.review_manager.open_review(
+            member, source="automod",
+            violation=f"Auto-detected [{event_type}]: {reason}",
+            recommended_action=punishment,
+            confidence="high" if len(history) >= 2 else "medium",
+            evidence=[f"Detection [{event_type}]: {reason}",
+                      f"Configured punishment: {punishment}",
+                      f"Prior warnings on record: {len(history)}"],
+            history=history,
+        )
+        # containment: short timeout slows the threat without removing anyone
+        contained = await self.timeout(
+            member, minutes=10,
+            reason=f"Containment while moderators review: {reason}",
+            event_type=event_type)
+        if review_id:
+            return (f"review #{review_id} opened (recommended {punishment})"
+                    + (", 10m containment timeout" if contained else ""))
+        return ("review already pending"
+                + (", 10m containment timeout" if contained else ""))
 
     # ── raid lockdown ────────────────────────────────────────
 

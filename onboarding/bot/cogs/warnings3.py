@@ -1,10 +1,15 @@
 """
 Three-Level Warning System cog — /warn slash-command group (v2.0).
 
-Level 1 → friendly reminder (no punishment)
-Level 2 → official warning (permanently stored)
-Level 3 → automatic kick or ban (configurable), DM explanation,
-          full audit trail + Telegram report.
+Level 1 → friendly reminder (no punishment) — explains rule, what happened,
+          and how to avoid repeating it.
+Level 2 → official warning (permanently stored) — references the previous
+          reminder and states possible next consequences.
+Level 3 → MODERATOR REVIEW. The bot NEVER kicks or bans automatically:
+          a premium Security Alert embed with full evidence, warning
+          history and violation timeline is posted to #security-alerts.
+          Only Administrators / the Security Team role can approve
+          Final Warning / Timeout / Kick / Ban / Dismiss via buttons.
 
 Fully additive: the existing /security warnings command and the automatic
 security-pipeline warnings keep working unchanged — this system reads the
@@ -45,6 +50,13 @@ DEFAULT_L3 = (
     "warnings.\n\n**Final reason:** {reason}\n\n"
     "**Your warning history:**\n{history}\n\n"
     "If you believe this was a mistake, you may contact the server staff."
+)
+DEFAULT_L3_NOTICE = (
+    "🚨 You have received your **third warning** in **{server}**.\n\n"
+    "**Reason:** {reason}\n\n"
+    "Your case has been sent to the moderation team for review. "
+    "A moderator will decide the outcome — please follow the Forge "
+    "Protocol in the meantime."
 )
 
 
@@ -149,13 +161,24 @@ class WarningSystem(commands.GroupCog, group_name="warn"):
     async def _handle_level1(self, interaction, member, reason, ws,
                              count, history) -> None:
         guild = interaction.guild
+        lang = await self.bot.guardian_store.language(guild.id)
+        t = self.bot.i18n.t
         msg = ws.get("level1_message") or DEFAULT_L1
         embed = discord.Embed(
-            title=f"💬 Friendly Reminder — {guild.name}",
-            description=f"{msg}\n\n**Context:** {reason}",
+            title=t(lang, "warn.l1.title", server=guild.name),
+            description=msg,
             color=discord.Color.blue(), timestamp=utcnow(),
         )
-        embed.set_footer(text="Level 1 of 3 • No action taken")
+        embed.add_field(name=t(lang, "warn.rule"),
+                        value="Forge Protocol — see the server rules channel.",
+                        inline=False)
+        embed.add_field(name=t(lang, "warn.what"), value=reason[:1024], inline=False)
+        embed.add_field(
+            name=t(lang, "warn.avoid"),
+            value="Please review the rules and adjust the behaviour described "
+                  "above — this reminder carries **no punishment**. 😊",
+            inline=False)
+        embed.set_footer(text=t(lang, "warn.l1.footer"))
         dm_ok = bool(ws.get("dm_on_warn", 1)) and await self._dm(member, "", embed)
 
         await self.bot.intel_store.add_mod_action(
@@ -183,17 +206,21 @@ class WarningSystem(commands.GroupCog, group_name="warn"):
     async def _handle_level2(self, interaction, member, reason, ws,
                              count, history) -> None:
         guild = interaction.guild
+        lang = await self.bot.guardian_store.language(guild.id)
+        t = self.bot.i18n.t
         msg = ws.get("level2_message") or DEFAULT_L2
         embed = discord.Embed(
-            title=f"⚠️ Official Warning — {guild.name}",
-            description=(
-                f"{msg}\n\n**Reason:** {reason}\n\n"
-                f"**Previous warnings:**\n{self._history_text(history[:-1])}"
-            ),
+            title=t(lang, "warn.l2.title", server=guild.name),
+            description=msg,
             color=discord.Color.orange(), timestamp=utcnow(),
         )
-        embed.set_footer(
-            text="Level 2 of 3 • One more warning will result in removal")
+        embed.add_field(name=t(lang, "warn.what"), value=reason[:1024], inline=False)
+        embed.add_field(name=t(lang, "warn.previous"),
+                        value=self._history_text(history[:-1])[:1024],
+                        inline=False)
+        embed.add_field(name=t(lang, "warn.next"),
+                        value=t(lang, "warn.l2.next"), inline=False)
+        embed.set_footer(text=t(lang, "warn.l2.footer"))
         dm_ok = bool(ws.get("dm_on_warn", 1)) and await self._dm(member, "", embed)
 
         await self.bot.intel_store.add_mod_action(
@@ -221,78 +248,111 @@ class WarningSystem(commands.GroupCog, group_name="warn"):
 
     async def _handle_level3(self, interaction, member, reason, ws,
                              count, history) -> None:
+        """Level 3 — MODERATOR REVIEW. The bot never kicks/bans by itself:
+        it collects evidence, builds a violation timeline and opens a
+        pending review in #security-alerts. Authorized moderators approve
+        Final Warning / Timeout / Kick / Ban / Dismiss via buttons."""
         guild = interaction.guild
-        action = (ws.get("level3_action") or "kick").lower()
-        if action not in ("kick", "ban"):
-            action = "kick"
+        recommended = (ws.get("level3_action") or "kick").lower()
+        if recommended not in ("kick", "ban"):
+            recommended = "kick"
         history_text = self._history_text(history)
 
-        # 1) DM explanation BEFORE removal (can't DM after they're gone)
-        template = ws.get("level3_message") or DEFAULT_L3
-        dm_text = template.format(
-            server=guild.name, reason=reason, history=history_text)
-        embed = discord.Embed(
-            title=f"🔨 Removed from {guild.name}",
-            description=dm_text,
-            color=discord.Color.red(), timestamp=utcnow(),
+        # 1) build evidence + violation timeline from the audit trail
+        evidence = [
+            f"Warning #{i}: {w.get('reason', '—')} "
+            f"({(w.get('created_at') or '')[:16].replace('T', ' ')})"
+            for i, w in enumerate(history, 1)
+        ]
+        evidence.append(f"Current violation: {reason}")
+        timeline = [
+            {"at": w.get("created_at") or "", "what": w.get("reason", "—")}
+            for w in history
+        ]
+        events = await self.bot.security_store.recent_events(
+            guild.id, limit=25)
+        for ev in events:
+            if ev.get("user_id") == member.id:
+                evidence.append(
+                    f"Security event [{ev['event_type']}]: "
+                    f"{(ev.get('evidence') or '—')[:150]}")
+                timeline.append({"at": ev.get("created_at") or "",
+                                 "what": f"{ev['event_type']} — "
+                                         f"{ev.get('action_taken') or 'logged'}"})
+        timeline.sort(key=lambda x: x.get("at") or "")
+
+        # confidence: 3+ recorded warnings with clear reasons ⇒ high
+        confidence = "high" if count >= 3 else "medium"
+
+        # 2) open the moderator review (duplicate-safe)
+        review_id = await self.bot.review_manager.open_review(
+            member, source="warn_l3",
+            violation=f"Third warning reached — Forge Protocol violation: {reason}",
+            recommended_action=recommended, confidence=confidence,
+            evidence=evidence[:15], history=history, timeline=timeline[:20],
         )
-        embed.set_footer(text="Level 3 of 3 • Final action")
-        dm_ok = await self._dm(member, "", embed)
 
-        # 2) execute the configured removal via the shared ActionExecutor
-        #    (full permission/hierarchy checks + punishments audit table)
-        full_reason = f"3-level warning system: {reason} (warning #{count})"
-        if action == "ban":
-            ok = await self.bot.action_executor.ban(
-                member, reason=full_reason, event_type="warn_l3",
-                moderator_id=interaction.user.id)
-        else:
-            ok = await self.bot.action_executor.kick(
-                member, reason=full_reason, event_type="warn_l3",
-                moderator_id=interaction.user.id)
+        # 3) notify the member that their case went to review (no punishment yet)
+        dm_ok = False
+        if review_id is not None and ws.get("dm_on_warn", 1):
+            embed = discord.Embed(
+                title=f"🚨 Moderation Review — {guild.name}",
+                description=DEFAULT_L3_NOTICE.format(
+                    server=guild.name, reason=reason),
+                color=discord.Color.red(), timestamp=utcnow(),
+            )
+            lang = await self.bot.guardian_store.language(guild.id)
+            embed.set_footer(text=self.bot.i18n.t(lang, "warn.l3.footer"))
+            dm_ok = await self._dm(member, "", embed)
 
-        # 3) audit everything
+        # 4) audit everything
         await self.bot.intel_store.add_mod_action(
             guild_id=guild.id, user_id=member.id, username=str(member),
-            action=f"warn_l3_{action}", level=3, reason=reason,
+            action="warn_l3_review", level=3, reason=reason,
             moderator_id=interaction.user.id, moderator_tag=str(interaction.user),
             dm_delivered=dm_ok, history=history,
         )
         await self.bot.security_store.log_event(
             guild_id=guild.id, user_id=member.id, username=str(member),
             event_type="manual",
-            evidence=f"level 3 warning → {action} | history={json.dumps(history)[:800]}",
-            action_taken=action if ok else f"{action} FAILED",
+            evidence=f"level 3 warning → moderator review "
+                     f"#{review_id or 'duplicate'} | "
+                     f"history={json.dumps(history)[:700]}",
+            action_taken="review_opened" if review_id else "review_already_pending",
             moderator_id=interaction.user.id,
         )
         await self.bot.intel_store.add_member_event(
-            guild.id, member.id, str(member), action,
-            detail=f"3-level warning system (warning #{count})")
-
-        # 4) optionally reset the count so a returning member starts fresh
-        if ok and ws.get("reset_after_action", 1):
-            await self.bot.db.execute(
-                "DELETE FROM warnings WHERE guild_id = ? AND user_id = ?",
-                (guild.id, member.id))
+            guild.id, member.id, str(member), "review",
+            detail=f"3rd warning → moderator review (warning #{count})")
 
         # 5) Telegram report
         await self._telegram(guild, member.id, "warn_level3",
                              reports.final_action({
-                                 "action": action,
+                                 "action": f"moderator review (rec: {recommended})",
                                  "username": str(member), "user_id": member.id,
                                  "moderator": str(interaction.user),
                                  "reason": reason,
                                  "dm": "✅" if dm_ok else "❌",
-                                 "success": "✅" if ok else "❌ (permissions?)",
+                                 "success": "✅ review opened" if review_id
+                                            else "ℹ️ review already pending",
                                  "history": history_text,
                                  "server_name": guild.name,
                              }))
-        await interaction.followup.send(
-            f"🔨 **Level 3** — **{member}** was "
-            f"{'**' + action + 'ned**' if action == 'ban' else '**kicked**'}"
-            f"{'' if ok else ' ⚠️ **FAILED** (check bot permissions/hierarchy)'}. "
-            f"DM explanation: {'✅ delivered' if dm_ok else '❌ closed'}",
-            ephemeral=True)
+        if review_id:
+            await interaction.followup.send(
+                f"🚨 **Level 3** — **{member}** has reached 3 warnings. "
+                f"**No automatic punishment was applied.** A moderation review "
+                f"(`#{review_id}`) with full evidence was posted to the "
+                f"security-alerts channel — an authorized moderator must "
+                f"approve **{recommended}** (or another action) there. "
+                f"Member notified: {'✅' if dm_ok else '❌'}",
+                ephemeral=True)
+        else:
+            await interaction.followup.send(
+                f"ℹ️ **{member}** already has a pending moderation review — "
+                f"no duplicate alert was created. The new warning was recorded "
+                f"({count} total).",
+                ephemeral=True)
 
     # ─────────────────────────────────────────────────────────
     # /warn history · /warn clear · /warn config
@@ -385,10 +445,12 @@ class WarningSystem(commands.GroupCog, group_name="warn"):
                 gid, "reset_after_action", int(reset_after_action))
         ws = await intel.get_warning_settings(gid)
         await interaction.response.send_message(
-            "🛡 **3-Level Warning System**\n"
+            "🛡 **3-Level Warning System (Forge Guardian)**\n"
             f"• Level 1 💬 friendly reminder → no punishment\n"
             f"• Level 2 ⚠️ official warning → stored permanently\n"
-            f"• Level 3 🔨 final action → **{ws.get('level3_action', 'kick')}**\n"
+            f"• Level 3 🚨 **moderator review** → recommended action: "
+            f"**{ws.get('level3_action', 'kick')}** (never automatic — "
+            f"an authorized moderator must approve via buttons)\n"
             f"• DM on warn: {'🟢' if ws.get('dm_on_warn', 1) else '🔴'} · "
             f"Reset after removal: "
             f"{'🟢' if ws.get('reset_after_action', 1) else '🔴'}",

@@ -16,11 +16,14 @@ from discord.ext import commands
 from bot.core.config import Config
 from bot.core.logging import get_logger
 from bot.database.db import Database
+from bot.database.guardian_store import GuardianStore
 from bot.database.intel_store import IntelStore
 from bot.database.security_store import SecurityStore
+from bot.services.i18n import I18n
 from bot.services.intel.collector import ProfileCollector
 from bot.services.invites import InviteTracker
 from bot.services.security.actions import ActionExecutor
+from bot.services.security.review import ReviewManager
 from bot.services.security.ai_moderation import AIModerationClient
 from bot.services.security.badwords import BadWordFilter
 from bot.services.security.raid import RaidDetector
@@ -73,6 +76,14 @@ class ForgeBot(commands.Bot):
         self.scam_scanner = ScamScanner()
         self.badword_filter = BadWordFilter()
         self.action_executor = ActionExecutor(self.security_store)
+
+        # ── Forge Guardian (final update) ──────────────────────
+        self.i18n = I18n()
+        self.guardian_store = GuardianStore(self.db)
+        self.review_manager = ReviewManager(self)
+        # route every automatic kick/ban proposal through moderator approval
+        self.action_executor.review_manager = self.review_manager
+
         self.ai_moderation = AIModerationClient(
             groq_api_key=config.security.groq_api_key,
             groq_model=config.security.groq_model,
@@ -89,6 +100,16 @@ class ForgeBot(commands.Bot):
         await self._load_cogs()
         await self.tree.sync()
         log.info("Slash commands synced")
+
+    async def on_interaction(self, interaction: discord.Interaction) -> None:
+        """Dispatch Forge Guardian review buttons (restart-safe: the review
+        id is embedded in the component custom_id, so no in-memory view
+        state is required after a restart)."""
+        if interaction.type is discord.InteractionType.component:
+            try:
+                await self.review_manager.handle_interaction(interaction)
+            except Exception:  # noqa: BLE001 — never break other interactions
+                log.exception("Review button dispatch failed")
 
     async def _load_cogs(self) -> None:
         """Auto-discover every cog module in bot/cogs — future modules
