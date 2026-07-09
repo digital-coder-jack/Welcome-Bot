@@ -37,7 +37,7 @@ export function welcomeEmbed(member) {
     .setDescription(
       `Hey ${member}, glad to have you here!\n\n` +
         `You are our **member #${member.guild.memberCount}** 🚀\n` +
-        `Check your DMs for the server rules and say hi in **#dev-intro**!`
+        `Check your DMs for the server rules and say hi in **#chill-zone**!`
     )
     .setThumbnail(member.user.displayAvatarURL({ size: 512 }))
     .setFooter({
@@ -90,7 +90,7 @@ export function devIntroEmbed(member) {
         `• 🛠 What do you build? (web, mobile, AI, games...)\n` +
         `• 💻 Favourite languages & frameworks?\n` +
         `• 🎯 What are you working on right now?\n\n` +
-        `Drop your intro below — we'd love to meet you! 🤝`
+        `Drop your intro in **#dev-intro** — we'd love to meet you! 🤝`
     )
     .setFooter({ text: `Member #${member.guild.memberCount}` })
     .setTimestamp();
