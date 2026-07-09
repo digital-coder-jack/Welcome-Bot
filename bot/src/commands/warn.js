@@ -30,6 +30,18 @@ export const data = new SlashCommandBuilder()
       .setMinValue(1)
       .setMaxValue(10)
       .setRequired(false)
+  )
+  .addStringOption((option) =>
+    option
+      .setName('severity')
+      .setDescription('Severity level (auto-classified from the reason when omitted)')
+      .addChoices(
+        { name: '\u{1F7E2} Low', value: 'low' },
+        { name: '\u{1F7E1} Medium', value: 'medium' },
+        { name: '\u{1F7E0} High', value: 'high' },
+        { name: '\u{1F534} Critical', value: 'critical' }
+      )
+      .setRequired(false)
   );
 
 /**
@@ -62,7 +74,9 @@ export async function execute(interaction) {
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const { count, max, kicked } = await issueWarning({
+  const severity = interaction.options.getString('severity') ?? undefined;
+
+  const { count, max, escalated, severity: resolvedSeverity } = await issueWarning({
     guild: interaction.guild,
     member,
     reason,
@@ -70,11 +84,13 @@ export async function execute(interaction) {
     moderatorTag: interaction.user.tag,
     rule: rule ?? null,
     source: 'command',
+    severity,
   });
 
-  const summary = kicked
-    ? `\u2705 Warned **${member.user.tag}** (${count}/${max}). They reached the maximum and were **kicked**.`
-    : `\u2705 Warned **${member.user.tag}** (${count}/${max}). Reason: ${reason}`;
+  const summary = escalated
+    ? `\u2705 Warned **${member.user.tag}** (${count}/${max}, ${resolvedSeverity}). ` +
+      `\u{1F6A8} Threshold reached \u2014 a **moderation approval panel** was posted to the alert channel. No automatic punishment was applied.`
+    : `\u2705 Warned **${member.user.tag}** (${count}/${max}, ${resolvedSeverity}). Reason: ${reason}`;
 
   await interaction.editReply({ content: summary });
 }

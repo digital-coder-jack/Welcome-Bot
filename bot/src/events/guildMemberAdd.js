@@ -21,7 +21,9 @@
 import { Events } from 'discord.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
-import { devIntroEmbed, rulesDMEmbed, welcomeDMEmbed, welcomeEmbed, COLORS } from '../utils/embeds.js';
+import { devIntroEmbed, COLORS } from '../utils/embeds.js';
+import { sendPublicWelcome } from '../managers/welcomeManager.js';
+import { sendWelcomeDM } from '../managers/dmManager.js';
 import { accountAge, formatUTC } from '../utils/time.js';
 import { sendLog } from '../services/moderationService.js';
 import { notifyMemberJoined } from '../services/telegramClient.js';
@@ -54,24 +56,18 @@ export default {
     let assignedRole = 'None';
 
     if (!isBot) {
-      // --- Step 1: Welcome embed in the welcome channel ---
-      if (config.channels.welcome) {
-        try {
-          const channel = await member.guild.channels.fetch(config.channels.welcome);
-          if (channel?.isTextBased()) {
-            await channel.send({ content: `${member}`, embeds: [welcomeEmbed(member)] });
-          }
-        } catch (error) {
-          logger.warn(`Failed to send welcome message: ${error.message}`);
-        }
+      // --- Step 1: Premium public welcome (themed, cinematic animation,
+      //             random GIFs, buttons, stickers) via welcomeManager ---
+      try {
+        await sendPublicWelcome(member);
+      } catch (error) {
+        logger.warn(`Failed to send public welcome: ${error.message}`);
       }
 
-      // --- Step 2: Animated welcome DM + server rules ---
+      // --- Step 2: Premium welcome DM (multi-embed journey + buttons +
+      //             server rules) via dmManager ---
       try {
-        await member.send({
-          embeds: [welcomeDMEmbed(member), rulesDMEmbed(member.guild.name)],
-        });
-        dmStatus = 'Delivered';
+        dmStatus = await sendWelcomeDM(member);
       } catch (error) {
         dmStatus = 'Failed (DMs closed)';
         logger.warn(`Failed to send welcome DM: ${error.message}`);

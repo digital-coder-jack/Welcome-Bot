@@ -9,6 +9,7 @@
 
 import { Events, MessageFlags } from 'discord.js';
 import { logger } from '../utils/logger.js';
+import { handlePanelInteraction, PANEL_PREFIX } from '../managers/approvalSystem.js';
 
 export default {
   name: Events.InteractionCreate,
@@ -19,6 +20,25 @@ export default {
    * @param {import('discord.js').Client} client
    */
   async execute(interaction, client) {
+    // --- Moderation Approval Panel buttons ---
+    if (interaction.isButton() && interaction.customId.startsWith(`${PANEL_PREFIX}:`)) {
+      try {
+        await handlePanelInteraction(interaction);
+      } catch (error) {
+        logger.error(`Moderation panel interaction failed: ${error.stack || error}`);
+        const errorReply = {
+          content: '\u26A0\uFE0F Something went wrong handling that moderation action.',
+          flags: MessageFlags.Ephemeral,
+        };
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp(errorReply).catch(() => {});
+        } else {
+          await interaction.reply(errorReply).catch(() => {});
+        }
+      }
+      return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
     const command = client.commands.get(interaction.commandName);

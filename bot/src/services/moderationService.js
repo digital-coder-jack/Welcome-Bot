@@ -24,11 +24,13 @@
 import { PermissionFlagsBits } from 'discord.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
-import { addWarning, countWarnings } from '../database/warningStore.js';
+import { countWarnings } from '../database/warningStore.js';
 import { COLORS, moderationLogEmbed, warningDMEmbed } from '../utils/embeds.js';
 import { ruleLabel } from '../utils/rules.js';
 import { formatUTC } from '../utils/time.js';
 import { notifyKick, notifyWarning } from './telegramClient.js';
+import { recordWarning, SEVERITIES } from '../managers/warningManager.js';
+import { getSettings } from '../database/settingsStore.js';
 
 /**
  * Resolve the configured log channel from a guild, if any.
@@ -201,13 +203,21 @@ export async function banMember(member, reason, { moderatorTag = 'Auto-Mod', del
 /**
  * Issue a warning to a member.
  *
+ * IMPORTANT POLICY: The bot NEVER automatically kicks or bans anyone based
+ * on warnings. Reaching the threshold (or receiving a critical-severity
+ * warning) raises a Moderator Approval Panel in the alert channel instead —
+ * a human moderator must explicitly approve any punishment.
+ *
  * Flow:
- *   1. Persist the warning.
- *   2. DM the user (best-effort).
+ *   1. Classify & persist the warning (smart severity levels).
+ *   2. DM the user a tiered notice:
+ *        Warning 1 → friendly reminder.
+ *        Warning 2 → serious warning.
+ *        Warning 3+ / critical → final notice (case under moderator review).
  *   3. Send the Telegram warning notification via the backend.
  *   4. Log the warning.
- *   5. If the user has reached the max warnings, kick them (which itself
- *      notifies Telegram and logs).
+ *   5. At the threshold or on critical severity: escalate to the
+ *      Moderator Approval Panel (approvalSystem). NO automatic punishment.
  *
  * @param {object} params
  * @param {import('discord.js').Guild} params.guild
@@ -217,22 +227,25 @@ export async function banMember(member, reason, { moderatorTag = 'Auto-Mod', del
  * @param {string} params.moderatorTag
  * @param {number|null} [params.rule]
  * @param {'command'|'auto'|'ai'} [params.source='command']
- * @returns {Promise<{count:number, max:number, kicked:boolean}>}
+ * @param {'low'|'medium'|'high'|'critical'} [params.severity]  explicit severity.
+ * @returns {Promise<{count:number, max:number, kicked:boolean, escalated:boolean, severity:string}>}
  */
-export async function issueWarning({ guild, member, reason, moderatorId, moderatorTag, rule = null, source = 'command' }) {
-  const max = config.maxWarnings;
+export async function issueWarning({ guild, member, reason, moderatorId, moderatorTag, rule = null, source = 'command', severity }) {
+  const settings = await getSettings(guild.id);
+  const max = settings.security.warnThreshold || config.maxWarnings;
 
-  // 1. Persist.
-  const { total } = await addWarning({
+  // 1. Classify & persist.
+  const { total, severity: resolvedSeverity } = await recordWarning({
     guildId: guild.id,
     userId: member.id,
     reason,
     moderatorId,
     moderatorTag,
     source,
+    severity,
   });
 
-  // 2. DM the user (never fatal if DMs are closed).
+  // 2. Tiered DM (never fatal if DMs are closed).
   try {
     await member.send({
       embeds: [warningDMEmbed({ guildName: guild.name, reason, count: total, max })],
@@ -247,7 +260,7 @@ export async function issueWarning({ guild, member, reason, moderatorId, moderat
       username: member.user.tag,
       user_id: member.id,
       server_name: guild.name,
-      reason,
+      reason: `[${resolvedSeverity.toUpperCase()}] ${reason}`,
       rule: rule ? ruleLabel(rule) : null,
       moderator: moderatorTag,
       warning_count: total,
@@ -262,26 +275,35 @@ export async function issueWarning({ guild, member, reason, moderatorId, moderat
   // 4. Log the warning.
   await sendLog(guild, {
     action: 'Warning',
-    color: COLORS.warning,
+    color: SEVERITIES[resolvedSeverity]?.color ?? COLORS.warning,
     userTag: member.user.tag,
     userId: member.id,
     moderatorTag,
     reason,
     rule,
-    extraFields: [{ name: 'Warnings', value: `${total} / ${max}`, inline: true }],
+    extraFields: [
+      { name: 'Warnings', value: `${total} / ${max}`, inline: true },
+      { name: 'Severity', value: SEVERITIES[resolvedSeverity]?.label ?? resolvedSeverity, inline: true },
+    ],
   });
-  logger.info(`Warned ${member.user.tag} (${total}/${max}) [${source}]: ${reason}`);
+  logger.info(`Warned ${member.user.tag} (${total}/${max}) [${source}/${resolvedSeverity}]: ${reason}`);
 
-  // 5. Escalate to a kick on reaching the maximum.
-  let kicked = false;
-  if (total >= max) {
-    kicked = await kickMember(member, `Reached maximum of ${max} warnings.`, {
-      moderatorTag: 'Auto-Mod',
-      warningCount: total,
-    });
+  // 5. Escalate to the Moderator Approval Panel — NEVER auto-punish.
+  //    (Lazy import breaks the circular dependency with approvalSystem.)
+  let escalated = false;
+  if (total >= max || resolvedSeverity === 'critical') {
+    try {
+      const { escalateToModerators } = await import('../managers/approvalSystem.js');
+      await escalateToModerators(member, { reason, severity: resolvedSeverity, warningCount: total });
+      escalated = true;
+    } catch (error) {
+      logger.error(`Failed to escalate to moderators: ${error.stack || error}`);
+    }
   }
 
-  return { count: total, max, kicked };
+  // `kicked` is kept in the return shape for backward compatibility with
+  // existing callers — it is now ALWAYS false (no automatic kicks).
+  return { count: total, max, kicked: false, escalated, severity: resolvedSeverity };
 }
 
 /**

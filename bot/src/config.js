@@ -58,6 +58,11 @@ export const config = Object.freeze({
     goodbye: envStr('GOODBYE_CHANNEL_ID'),
     log: envStr('LOG_CHANNEL_ID'),
     devIntro: envStr('DEV_INTRO_CHANNEL_ID'),
+    // Optional channels used by the premium welcome buttons & mod alerts.
+    rules: envStr('RULES_CHANNEL_ID'), // 📖 Rules button target
+    community: envStr('COMMUNITY_CHANNEL_ID'), // 🎮 Community button target
+    support: envStr('SUPPORT_CHANNEL_ID'), // 🛟 Support button target (DM)
+    modAlert: envStr('MOD_ALERT_CHANNEL_ID'), // 🚨 default moderation-alert channel
   }),
   roles: Object.freeze({
     forgeMember: envStr('FORGE_MEMBER_ROLE_ID'),

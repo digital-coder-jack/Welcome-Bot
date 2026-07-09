@@ -136,17 +136,35 @@ export function rulesDMEmbed(guildName) {
  * @returns {EmbedBuilder}
  */
 export function warningDMEmbed({ guildName, reason, count, max }) {
+  // Tiered messaging: 1 = friendly reminder, 2 = serious warning,
+  // >= threshold = final notice (human moderator review — never auto-punished).
+  let title;
+  let description;
+  if (count <= 1) {
+    title = `💛 A friendly reminder from ${guildName}`;
+    description =
+      'This is just a gentle heads-up — no action has been taken.\n' +
+      'Please take a moment to review the server rules. We appreciate you! 🙏';
+  } else if (count < max) {
+    title = `⚠️ Serious warning from ${guildName}`;
+    description =
+      `This is warning **${count} of ${max}**. Please treat this seriously.\n` +
+      'Further violations will send your case to the moderation team for review.';
+  } else {
+    title = `🚨 Final notice from ${guildName}`;
+    description =
+      'You have reached the warning threshold.\n' +
+      '**Your case has been forwarded to the moderation team for human review.**\n' +
+      'No automatic punishment has been applied — a moderator will decide the outcome.';
+  }
+
   return new EmbedBuilder()
-    .setColor(COLORS.warning)
-    .setTitle(`\u26A0\uFE0F You have been warned in ${guildName}`)
+    .setColor(count >= max ? COLORS.danger : COLORS.warning)
+    .setTitle(title)
+    .setDescription(description)
     .addFields(
       { name: 'Reason', value: reason || 'No reason provided' },
       { name: 'Warnings', value: `${count} / ${max}`, inline: true }
-    )
-    .setDescription(
-      count >= max
-        ? 'You have reached the maximum number of warnings and may be removed from the server.'
-        : `You have **${max - count}** warning(s) left before removal.`
     )
     .setTimestamp();
 }

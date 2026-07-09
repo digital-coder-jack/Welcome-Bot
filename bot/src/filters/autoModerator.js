@@ -101,9 +101,11 @@ async function deleteOrWarnFromAI(message, result) {
 
     case 'warn':
     case 'kick': {
-      // Delete the offending message first, then issue a warning. The warning
-      // system itself escalates to a kick automatically at the max threshold,
-      // so 'warn' and 'kick' both route through issueWarning for consistency.
+      // Delete the offending message first, then issue a warning.
+      // POLICY: the bot NEVER kicks/bans automatically. An AI 'kick'
+      // recommendation is treated as a HIGH-severity warning; reaching the
+      // threshold (or critical severity) raises a Moderator Approval Panel
+      // where a human decides the outcome.
       await deleteMessage(message, { reason, rule: result.rule, source: 'ai' });
       if (message.member) {
         await issueWarning({
@@ -114,6 +116,7 @@ async function deleteOrWarnFromAI(message, result) {
           moderatorTag: 'AI Moderator',
           rule: result.rule,
           source: 'ai',
+          severity: result.action === 'kick' ? 'high' : undefined,
         });
       }
       break;

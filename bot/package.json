@@ -1,6 +1,6 @@
 {
   "name": "welcome-bot",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Discord Welcome & AI Moderation Bot (Discord.js v14)",
   "type": "module",
   "main": "src/index.js",
