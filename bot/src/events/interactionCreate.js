@@ -10,6 +10,7 @@
 import { Events, MessageFlags } from 'discord.js';
 import { logger } from '../utils/logger.js';
 import { handlePanelInteraction, PANEL_PREFIX } from '../managers/approvalSystem.js';
+import { handleSecurityAlertInteraction, SECURITY_PREFIX } from '../security/securityAlerts.js';
 
 export default {
   name: Events.InteractionCreate,
@@ -20,6 +21,25 @@ export default {
    * @param {import('discord.js').Client} client
    */
   async execute(interaction, client) {
+    // --- Forge Guardian v2.0: Security Alert (Owner Approval) buttons ---
+    if (interaction.isButton() && interaction.customId.startsWith(`${SECURITY_PREFIX}:`)) {
+      try {
+        await handleSecurityAlertInteraction(interaction);
+      } catch (error) {
+        logger.error(`Security alert interaction failed: ${error.stack || error}`);
+        const errorReply = {
+          content: '\u26A0\uFE0F Something went wrong handling that security action.',
+          flags: MessageFlags.Ephemeral,
+        };
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp(errorReply).catch(() => {});
+        } else {
+          await interaction.reply(errorReply).catch(() => {});
+        }
+      }
+      return;
+    }
+
     // --- Moderation Approval Panel buttons ---
     if (interaction.isButton() && interaction.customId.startsWith(`${PANEL_PREFIX}:`)) {
       try {

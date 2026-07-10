@@ -20,11 +20,14 @@ from fastapi import APIRouter
 
 from app.schemas.telegram import (
     BanPayload,
+    HighRiskJoinPayload,
     KickPayload,
     MemberJoinedPayload,
     MemberLeftPayload,
+    OwnerApprovalPayload,
     SecurityAlertPayload,
     TelegramResponse,
+    TimeoutPayload,
     WarningPayload,
 )
 from app.services.telegram_service import telegram_service
@@ -119,4 +122,56 @@ async def security_alert(payload: SecurityAlertPayload) -> TelegramResponse:
     return TelegramResponse(
         success=delivered,
         message="Security alert sent." if delivered else "Telegram delivery failed.",
+    )
+
+
+@router.post("/timeout", response_model=TelegramResponse)
+async def timeout(payload: TimeoutPayload) -> TelegramResponse:
+    """Relay a member-timeout notification to Telegram (Guardian v2.0)."""
+    logger.info(
+        "Timeout: %s (%s) for %d min by %s",
+        payload.username,
+        payload.user_id,
+        payload.duration_minutes,
+        payload.moderator,
+    )
+    delivered = await telegram_service.notify_timeout(payload)
+    return TelegramResponse(
+        success=delivered,
+        message="Timeout notification sent." if delivered else "Telegram delivery failed.",
+    )
+
+
+@router.post("/high-risk-join", response_model=TelegramResponse)
+async def high_risk_join(payload: HighRiskJoinPayload) -> TelegramResponse:
+    """Relay a high-risk join security report to Telegram (Guardian v2.0)."""
+    logger.info(
+        "High-risk join: %s (%s) score=%d level=%s",
+        payload.username,
+        payload.user_id,
+        payload.risk_score,
+        payload.threat_level,
+    )
+    delivered = await telegram_service.notify_high_risk_join(payload)
+    return TelegramResponse(
+        success=delivered,
+        message="High-risk join notification sent." if delivered else "Telegram delivery failed.",
+    )
+
+
+@router.post("/owner-approval", response_model=TelegramResponse)
+async def owner_approval(payload: OwnerApprovalPayload) -> TelegramResponse:
+    """Relay an Owner Approval Request notification to Telegram (Guardian v2.0)."""
+    logger.info(
+        "Owner approval request %s: %s (%s) score=%d level=%s",
+        payload.alert_id,
+        payload.username,
+        payload.user_id,
+        payload.risk_score,
+        payload.threat_level,
+    )
+    delivered = await telegram_service.notify_owner_approval(payload)
+    return TelegramResponse(
+        success=delivered,
+        message="Owner-approval notification sent." if delivered else "Telegram delivery failed.",
     )

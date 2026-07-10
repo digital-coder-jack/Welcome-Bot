@@ -50,6 +50,11 @@ Telegram (owner notifications)
 | POST   | `/telegram/kick`            | Member kicked → Telegram |
 | POST   | `/telegram/ban`             | Member banned → Telegram |
 | POST   | `/telegram/security-alert`  | Raid / scam / AI-violation alerts → Telegram |
+| POST   | `/security/analyze-join`    | 🆕 **Guardian v2.0** — AI join analysis (risk score, threat level, confidence, reasons, recommended action) |
+| POST   | `/security/analyze-event`   | 🆕 **Guardian v2.0** — AI analysis of suspicious live events (scams, token leaks, ...) |
+| POST   | `/telegram/timeout`         | 🆕 Member timed out → Telegram |
+| POST   | `/telegram/high-risk-join`  | 🆕 Rich high-risk-join report → Telegram |
+| POST   | `/telegram/owner-approval`  | 🆕 Owner Approval Request → Telegram |
 
 The join notification includes: Username, Display Name, User ID, Server Name,
 Join Time, Account Created, Account Age, Member Number, Invite Code, Inviter,
@@ -82,6 +87,86 @@ Plus: raid detection (8+ joins/60s) and new-account screening (<7 days) fire
 style, dividers and button emojis. Admins pick a theme with
 `/welcomeconfig theme`, and can override the GIF pool with their own
 collection via `/welcomeconfig gifs add`.
+
+## 🛡️ Forge Guardian Security System v2.0
+
+Enterprise-grade, fully modular security layered ON TOP of every existing
+feature (welcome system, Developer Intro, Forge Member role, warnings, AI
+moderation and DM system all continue working unchanged). Every phase fails
+safely and is configurable via environment variables.
+
+### Phase 1 — Join Security Scan (`bot/src/security/joinScan.js`)
+
+Every join triggers a complete scan:
+
+- **Identity Analysis** (`identityAnalyzer.js`) — username, global display
+  name, server nickname: invisible Unicode, zero-width characters, homoglyph
+  attacks, emoji abuse, scam keywords, fake Staff/Moderator/Admin/Discord
+  Employee impersonation.
+- **Account Analysis** (`accountAnalyzer.js`) — account age & days since
+  creation, new/recently-created account detection, default avatar detection,
+  bot-or-human, plus (when available) banner URL, accent color, avatar
+  decoration, public badges & public flags.
+- **Invite Tracking** — invite code, inviter, uses, vanity & unknown-invite
+  detection (existing inviteTracker, now feeding the risk engine).
+- **Previous History** (`database/securityStore.js`) — our own database:
+  previous joins/leaves/warnings/timeouts/kicks/bans, previous risk scores
+  and rejoin count (`security-history.json`).
+- **AI Join Analysis** — the complete member profile goes to FastAPI;
+  Groq returns **Risk Score (0–100), Threat Level, Confidence, Reasons and a
+  Recommended Action**.
+
+**Risk classification:** `0–20 SAFE · 21–40 LOW · 41–60 REVIEW · 61–80 HIGH ·
+81–100 CRITICAL`
+
+### Phase 2 — Live Security (`liveSecurity.js` + `threatDetectors.js`)
+
+Every message is monitored. On top of the existing filters (spam, flooding,
+emoji/mention spam, CAPS, invites, repeats) v2.0 adds: scam links, malware
+domains, phishing URLs, fake Nitro, crypto scams, fake giveaways, Discord
+invite spam, link spam, channel spam (cross-posting), Unicode abuse,
+invisible characters, token leaks and mass copy-paste. Every suspicious
+message is also analyzed by Groq AI.
+
+### Phase 3 — Anti Raid (`raidManager.js`)
+
+Detects raids (default: **10 joins within 30 seconds**) and enables
+**Raid Mode**: pauses welcomes, locks the configured channels, enables
+slowmode, restricts (timeouts) suspicious new accounts, notifies the owner +
+moderators in Discord and sends a Telegram alert. Raid Mode auto-disables
+after the configured timeout and restores all channels.
+
+### Phase 4 — AI Security Engine (`backend/app/routes/security.py`)
+
+Every suspicious event goes through FastAPI. Groq returns Threat Level,
+Confidence, Explanation, Violated Rule and a Recommended Action
+(`ignore / delete_message / warn / timeout / kick / ban_recommendation`).
+**The AI can NEVER ban automatically** — the strongest thing it can produce is
+a recommendation that raises a human-approval alert.
+
+### Phase 5 — Owner Approval System (`securityAlerts.js`)
+
+HIGH/CRITICAL threats create a **Security Alert** card with buttons:
+
+✅ Ban · ⚠ Kick · 🟡 Timeout · 📝 Warn · ❌ Ignore
+
+Only the **Owner, Administrators or configured Moderator roles** can press
+them (Ban/Kick also require the matching Discord permission). Duplicate-click
+locks, disabled buttons after resolution, full audit + Telegram trail.
+
+### Security Report (`securityReport.js`)
+
+After every successful join a rich report is posted showing: Scan Progress,
+Risk Score, Threat Level, Username Check, Account Age Check, Avatar Check,
+Invite Check, AI Analysis, Scam Detection, Role Assignment, Welcome DM Status,
+Developer Intro Status, Forge Member Role Status, Telegram Status, Database
+Status and Scan Time.
+
+### Telegram Notifications (rich HTML, owner-only)
+
+New Member · High Risk Join · Scam Detection · Warning · Timeout · Kick · Ban
+· Raid Detection · Dangerous Username · Owner Approval Request — all relayed
+through the FastAPI backend (the bot never talks to Telegram directly).
 
 ## 🛡️ Security & Moderation Workflow
 
@@ -151,20 +236,30 @@ welcome-bot/
 │       │   ├── moderationQueue.js    #   pending cases, locks, race-condition safety
 │       │   ├── approvalSystem.js     #   moderator panel, confirmations, owner override
 │       │   └── auditLogger.js        #   audit-trail IDs + rich moderation logs
-│       ├── services/             # aiClient, telegramClient, inviteTracker, securityService, moderationService
-│       ├── filters/              # rule-based auto-mod + AI pipeline orchestrator
+│       ├── security/             # 🆕 Forge Guardian Security System v2.0:
+│       │   ├── identityAnalyzer.js   #   Phase 1: names, unicode, homoglyphs, scam keywords, impersonation
+│       │   ├── accountAnalyzer.js    #   Phase 1: age, avatar, banner, badges, flags
+│       │   ├── riskEngine.js         #   0–100 risk scoring + SAFE…CRITICAL classification
+│       │   ├── joinScan.js           #   Phase 1: complete join-scan orchestrator
+│       │   ├── threatDetectors.js    #   Phase 2: scams, phishing, token leaks, copy-paste, channel spam
+│       │   ├── liveSecurity.js       #   Phase 2: live message pipeline + AI verdicts
+│       │   ├── raidManager.js        #   Phase 3: raid detection + Raid Mode (auto-expiring)
+│       │   ├── securityAlerts.js     #   Phase 5: Owner Approval buttons (Ban/Kick/Timeout/Warn/Ignore)
+│       │   └── securityReport.js     #   post-join Security Report embed
+│       ├── services/             # aiClient (+security endpoints), telegramClient (+timeout/high-risk/approval), inviteTracker, securityService, moderationService
+│       ├── filters/              # rule-based auto-mod + AI pipeline orchestrator (+live security stage)
 │       ├── utils/                # logger, embeds, rules, time
-│       ├── database/             # jsonStore (generic), warningStore, memberStore, settingsStore
+│       ├── database/             # jsonStore (generic), warningStore, memberStore, settingsStore, 🆕 securityStore
 │       ├── client.js / config.js / index.js
 │       └── ...
 │
 ├── backend/                      # FastAPI backend (Vercel) — single API
 │   ├── api/index.py              # Vercel serverless entry
 │   ├── app/
-│   │   ├── routes/               # moderation.py, telegram.py, health.py
-│   │   ├── services/             # groq_service.py, telegram_service.py
-│   │   ├── schemas/              # moderation.py, telegram.py
-│   │   ├── prompts/              # moderation system prompt
+│   │   ├── routes/               # moderation.py, telegram.py, health.py, 🆕 security.py
+│   │   ├── services/             # groq_service.py, telegram_service.py, 🆕 security_service.py
+│   │   ├── schemas/              # moderation.py, telegram.py, 🆕 security.py
+│   │   ├── prompts/              # moderation system prompt, 🆕 security prompts
 │   │   ├── utils/                # config.py, logger.py
 │   │   └── main.py
 │   ├── requirements.txt
@@ -198,6 +293,27 @@ welcome-bot/
 | `SUPPORT_CHANNEL_ID` | **NEW (optional)** — 🛟 Support button target (DM) |
 | `MOD_ALERT_CHANNEL_ID` | **NEW (optional)** — default moderation-approval-panel channel |
 | `MAX_WARNINGS` | Warnings before a **moderation approval panel** is raised (default 3) — never an auto-kick |
+
+**🆕 Forge Guardian v2.0 (all optional, safe defaults):**
+
+| Var | Default | Purpose |
+|---|---|---|
+| `SECURITY_JOIN_SCAN_ENABLED` | `true` | Phase 1 join security scan |
+| `SECURITY_LIVE_SCAN_ENABLED` | `true` | Phase 2 live message threat detection |
+| `SECURITY_ANTI_RAID_ENABLED` | `true` | Phase 3 raid detection + Raid Mode |
+| `SECURITY_AI_ANALYSIS_ENABLED` | `true` | Phase 4 Groq AI security engine |
+| `SECURITY_NEW_ACCOUNT_DAYS` | `7` | Younger ⇒ "new account" |
+| `SECURITY_RECENT_ACCOUNT_DAYS` | `30` | Younger ⇒ "recently created" |
+| `SECURITY_RAID_JOINS` | `10` | Joins within the window that trigger Raid Mode |
+| `SECURITY_RAID_WINDOW_SEC` | `30` | Raid detection rolling window (s) |
+| `SECURITY_RAID_MODE_MINUTES` | `15` | Raid Mode auto-disable timeout |
+| `SECURITY_RAID_SLOWMODE_SEC` | `30` | Slowmode applied during Raid Mode |
+| `SECURITY_RAID_LOCK_CHANNEL_IDS` | — | Comma-separated channels to lock in Raid Mode |
+| `SECURITY_ALERT_CHANNEL_ID` | — | Owner-Approval alert channel (falls back to MOD_ALERT/LOG) |
+| `SECURITY_REPORT_CHANNEL_ID` | — | Security Report channel (falls back to alert channel) |
+| `SECURITY_JOIN_REPORT_ENABLED` | `true` | Post the Security Report after every join |
+| `SECURITY_APPROVAL_THRESHOLD` | `61` | Risk score ≥ this raises an Owner Approval alert |
+| `SECURITY_TIMEOUT_MINUTES` | `60` | Duration of the 🟡 Timeout button |
 
 Config is read **only** from environment variables.
 
@@ -237,9 +353,10 @@ Required Discord permissions/intents: **Manage Guild** (invite tracking),
 | `settings.json` | Per-guild welcome + security configuration |
 | `modqueue.json` | Pending/resolved moderation cases |
 | `audit.json` | Append-only audit trail (last 2000 entries per guild) |
+| `security-history.json` | 🆕 Guardian v2.0 per-member security history (joins, leaves, warnings, timeouts, kicks, bans, risk scores, rejoin count) |
 
 ## Deployment Status
 
 - **Tech Stack**: Discord.js v14 + FastAPI + Groq + Telegram Bot API
-- **Backend Version**: 2.0.0 · **Bot Version**: 2.0.0 (premium welcome + approval-panel security)
-- **Last Updated**: 2026-07-09
+- **Backend Version**: 2.0.0 · **Bot Version**: 2.0.0 (premium welcome + approval-panel security + **Forge Guardian Security System v2.0**)
+- **Last Updated**: 2026-07-10

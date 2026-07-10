@@ -21,6 +21,7 @@ import { runAllFilters } from './index.js';
 import { analyzeMessage } from '../services/aiClient.js';
 import { deleteMessage, issueWarning } from '../services/moderationService.js';
 import { reportAIViolation } from '../services/securityService.js';
+import { runLiveSecurity } from '../security/liveSecurity.js';
 
 /** Confidence below which we ignore an AI "violation" to avoid false positives. */
 const AI_CONFIDENCE_THRESHOLD = 0.75;
@@ -56,6 +57,16 @@ export async function moderateMessage(message) {
   if (verdict) {
     await deleteMessage(message, { reason: verdict.reason, rule: verdict.rule, source: 'auto' });
     return; // Local filter handled it; skip the AI call.
+  }
+
+  // --- Stage 1.5: Forge Guardian v2.0 Live Security (Phase 2) ---
+  // Scam links, phishing, fake nitro, crypto scams, token leaks, unicode
+  // abuse, mass copy-paste, channel spam + AI security analysis.
+  try {
+    const handled = await runLiveSecurity(message);
+    if (handled) return; // Threat handled; skip the legacy AI call.
+  } catch (error) {
+    logger.warn(`Live security pipeline failed (continuing): ${error.message}`);
   }
 
   // --- Stage 2: AI moderation ---

@@ -129,3 +129,36 @@ export function notifyBan(payload) {
 export function notifySecurityAlert(payload) {
   return post('/telegram/security-alert', payload);
 }
+
+/* ------------------------------------------------------------------ */
+/* Forge Guardian Security System v2.0 — additional notifications      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Notify the backend that a member was timed out.
+ * @param {object} payload  matches backend TimeoutPayload schema.
+ * @returns {Promise<boolean>}
+ */
+export function notifyTimeout(payload) {
+  return post('/telegram/timeout', payload);
+}
+
+/**
+ * Send a rich HIGH-RISK JOIN report (risk score, threat level, reasons,
+ * identity/account findings) to Telegram.
+ * @param {object} payload  matches backend HighRiskJoinPayload schema.
+ * @returns {Promise<boolean>}
+ */
+export function notifyHighRiskJoin(payload) {
+  return post('/telegram/high-risk-join', payload);
+}
+
+/**
+ * Send an Owner Approval Request notification (a HIGH/CRITICAL security
+ * alert is awaiting a human decision in Discord).
+ * @param {object} payload  matches backend OwnerApprovalPayload schema.
+ * @returns {Promise<boolean>}
+ */
+export function notifyOwnerApproval(payload) {
+  return post('/telegram/owner-approval', payload);
+}

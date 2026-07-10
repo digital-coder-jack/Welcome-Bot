@@ -16,6 +16,7 @@ import { COLORS } from '../utils/embeds.js';
 import { formatUTC } from '../utils/time.js';
 import { sendLog } from '../services/moderationService.js';
 import { notifyBan } from '../services/telegramClient.js';
+import { recordBan } from '../database/securityStore.js';
 
 export default {
   name: Events.GuildBanAdd,
@@ -58,6 +59,13 @@ export default {
       });
     } catch (error) {
       logger.warn(`Telegram ban notification failed: ${error.message}`);
+    }
+
+    // 2b. Forge Guardian v2.0: record the ban in the security history.
+    try {
+      await recordBan(ban.guild.id, ban.user.id, reason, moderator);
+    } catch (error) {
+      logger.warn(`Failed to record ban in security history: ${error.message}`);
     }
 
     // 3. Log the ban.

@@ -46,6 +46,34 @@ function envStr(key, fallback = '') {
   return raw === undefined ? fallback : raw.trim();
 }
 
+/**
+ * Read a comma-separated environment variable into a trimmed string array.
+ *
+ * @param {string} key
+ * @returns {string[]}
+ */
+function envList(key) {
+  const raw = process.env[key];
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Read a boolean environment variable ('true'/'1'/'yes' => true).
+ *
+ * @param {string} key
+ * @param {boolean} fallback
+ * @returns {boolean}
+ */
+function envBool(key, fallback) {
+  const raw = process.env[key];
+  if (raw === undefined || raw === '') return fallback;
+  return ['true', '1', 'yes', 'on'].includes(raw.trim().toLowerCase());
+}
+
 export const config = Object.freeze({
   // --- Discord core credentials ---
   token: envStr('DISCORD_TOKEN'),
@@ -86,6 +114,46 @@ export const config = Object.freeze({
 
   // --- Moderation policy ---
   maxWarnings: envInt('MAX_WARNINGS', 3),
+
+  // --- Forge Guardian Security System v2.0 (all optional, safe defaults) ---
+  security: Object.freeze({
+    /** Master switch for the join security scan (Phase 1). */
+    joinScanEnabled: envBool('SECURITY_JOIN_SCAN_ENABLED', true),
+    /** Master switch for live message security (Phase 2). */
+    liveScanEnabled: envBool('SECURITY_LIVE_SCAN_ENABLED', true),
+    /** Master switch for anti-raid (Phase 3). */
+    antiRaidEnabled: envBool('SECURITY_ANTI_RAID_ENABLED', true),
+    /** Master switch for AI join/message analysis (Phase 4). */
+    aiAnalysisEnabled: envBool('SECURITY_AI_ANALYSIS_ENABLED', true),
+
+    /** Accounts younger than this (days) are "new". */
+    newAccountDays: envInt('SECURITY_NEW_ACCOUNT_DAYS', 7),
+    /** Accounts younger than this (days) are "recently created". */
+    recentAccountDays: envInt('SECURITY_RECENT_ACCOUNT_DAYS', 30),
+
+    /** Raid detection: joins within window that trigger Raid Mode. */
+    raidJoinThreshold: envInt('SECURITY_RAID_JOINS', 10),
+    /** Raid detection rolling window (seconds). */
+    raidWindowSec: envInt('SECURITY_RAID_WINDOW_SEC', 30),
+    /** How long Raid Mode stays active (minutes) before auto-disable. */
+    raidModeMinutes: envInt('SECURITY_RAID_MODE_MINUTES', 15),
+    /** Slowmode (seconds) applied to locked channels during Raid Mode. */
+    raidSlowmodeSec: envInt('SECURITY_RAID_SLOWMODE_SEC', 30),
+    /** Channels to lock during Raid Mode (comma-separated IDs). */
+    raidLockChannelIds: Object.freeze(envList('SECURITY_RAID_LOCK_CHANNEL_IDS')),
+
+    /** Channel for security alerts / owner-approval panels (falls back to modAlert/log). */
+    alertChannelId: envStr('SECURITY_ALERT_CHANNEL_ID'),
+    /** Channel for the post-join Security Report (falls back to alert channel). */
+    reportChannelId: envStr('SECURITY_REPORT_CHANNEL_ID'),
+    /** Whether to post the animated Security Report after every join. */
+    joinReportEnabled: envBool('SECURITY_JOIN_REPORT_ENABLED', true),
+
+    /** Risk score at/above which an Owner Approval security alert is raised. */
+    approvalThreshold: envInt('SECURITY_APPROVAL_THRESHOLD', 61),
+    /** Default timeout (minutes) for the 🟡 Timeout security-alert button. */
+    timeoutMinutes: envInt('SECURITY_TIMEOUT_MINUTES', 60),
+  }),
 });
 
 /**

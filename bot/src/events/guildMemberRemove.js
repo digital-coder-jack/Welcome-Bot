@@ -17,6 +17,7 @@ import { formatDuration, formatUTC } from '../utils/time.js';
 import { sendLog } from '../services/moderationService.js';
 import { notifyMemberLeft } from '../services/telegramClient.js';
 import { markMemberLeft } from '../database/memberStore.js';
+import { recordLeave } from '../database/securityStore.js';
 
 export default {
   name: Events.GuildMemberRemove,
@@ -74,6 +75,13 @@ export default {
       await markMemberLeft(member.guild.id, member.id, new Date(now).toISOString());
     } catch (error) {
       logger.warn(`Failed to update member store: ${error.message}`);
+    }
+
+    // 3b. Forge Guardian v2.0: record the leave in the security history.
+    try {
+      await recordLeave(member.guild.id, member.id);
+    } catch (error) {
+      logger.warn(`Failed to record leave in security history: ${error.message}`);
     }
 
     // 4. Log the departure.

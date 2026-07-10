@@ -106,6 +106,52 @@ class SecurityAlertPayload(BaseModel):
     timestamp: str = Field(..., description="ISO timestamp of the alert.")
 
 
+class TimeoutPayload(BaseModel):
+    """Payload sent by the bot when a member is timed out (Guardian v2.0)."""
+
+    username: str = Field(..., description="Discord username of the timed-out member.")
+    user_id: str = Field(..., description="Discord user ID.")
+    server_name: str = Field(..., description="Name of the Discord server.")
+    reason: str = Field("No reason provided", description="Reason for the timeout.")
+    moderator: str = Field("Unknown", description="Tag of the moderator (or 'Forge Guardian').")
+    duration_minutes: int = Field(0, ge=0, description="Timeout duration in minutes.")
+    timestamp: str = Field(..., description="ISO timestamp of the timeout.")
+
+
+class HighRiskJoinPayload(BaseModel):
+    """Rich high-risk join report (Guardian v2.0 join security scan)."""
+
+    username: str = Field(..., description="Discord tag of the joining member.")
+    user_id: str = Field(..., description="Discord user ID.")
+    server_name: str = Field(..., description="Name of the Discord server.")
+    risk_score: int = Field(..., ge=0, le=100, description="Combined risk score.")
+    threat_level: str = Field(..., description="SAFE|LOW|MEDIUM|HIGH|CRITICAL.")
+    confidence: float = Field(0.0, ge=0.0, le=1.0, description="AI confidence.")
+    reasons: str = Field("", description="Semicolon-joined risk reasons.")
+    account_age: str = Field("Unknown", description="Human-readable account age.")
+    invite_code: str = Field("Unknown", description="Invite code used.")
+    inviter: str = Field("Unknown", description="Inviter tag.")
+    rejoin_count: int = Field(0, ge=0, description="Times the member re-joined before.")
+    avatar_url: str = Field("", description="Avatar URL.")
+    recommended_action: str = Field("review", description="AI-recommended action.")
+    timestamp: str = Field(..., description="ISO timestamp.")
+
+
+class OwnerApprovalPayload(BaseModel):
+    """Owner Approval Request: a security alert awaits a human decision."""
+
+    alert_id: str = Field(..., description="Security alert ID (e.g. SEC-XXXX-1).")
+    server_name: str = Field(..., description="Name of the Discord server.")
+    username: str = Field(..., description="Discord tag of the flagged member.")
+    user_id: str = Field(..., description="Discord user ID.")
+    risk_score: int = Field(..., ge=0, le=100, description="Risk score.")
+    threat_level: str = Field(..., description="HIGH or CRITICAL (others accepted).")
+    reasons: str = Field("", description="Semicolon-joined reasons.")
+    source: str = Field("Security Engine", description="Which subsystem raised the alert.")
+    recommended_action: str = Field("review", description="AI-recommended action.")
+    timestamp: str = Field(..., description="ISO timestamp.")
+
+
 class TelegramResponse(BaseModel):
     """Standard response for every /telegram/* endpoint."""
 

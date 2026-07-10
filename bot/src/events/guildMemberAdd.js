@@ -30,6 +30,9 @@ import { notifyMemberJoined } from '../services/telegramClient.js';
 import { resolveUsedInvite } from '../services/inviteTracker.js';
 import { trackJoinForSecurity } from '../services/securityService.js';
 import { saveMember } from '../database/memberStore.js';
+import { runJoinScan } from '../security/joinScan.js';
+import { trackJoinForRaid, isRaidModeActive } from '../security/raidManager.js';
+import { sendSecurityReport } from '../security/securityReport.js';
 
 export default {
   name: Events.GuildMemberAdd,
@@ -52,10 +55,38 @@ export default {
       logger.warn(`Security join tracking failed: ${error.message}`);
     }
 
+    // --- Forge Guardian v2.0: Anti-Raid tracking (Phase 3) ---
+    let raidActive = false;
+    if (config.security.antiRaidEnabled) {
+      try {
+        raidActive = await trackJoinForRaid(member);
+      } catch (error) {
+        logger.warn(`Anti-raid tracking failed: ${error.message}`);
+      }
+    }
+
+    // --- Forge Guardian v2.0: complete Join Security Scan (Phase 1) ---
+    let scan = null;
+    try {
+      scan = await runJoinScan(member, invite);
+    } catch (error) {
+      logger.warn(`Join security scan failed: ${error.message}`);
+    }
+
     let dmStatus = 'Not attempted';
     let assignedRole = 'None';
+    let devIntroSent = false;
+    let telegramSent = false;
+    let databaseSaved = false;
 
-    if (!isBot) {
+    // During Raid Mode welcomes are paused (safety); everything else continues.
+    const welcomesPaused = raidActive || isRaidModeActive(member.guild.id);
+    if (welcomesPaused) {
+      dmStatus = 'Paused (Raid Mode)';
+      logger.warn(`Raid Mode active — welcome flow paused for ${member.user.tag}.`);
+    }
+
+    if (!isBot && !welcomesPaused) {
       // --- Step 1: Premium public welcome (themed, cinematic animation,
       //             random GIFs, buttons, stickers) via welcomeManager ---
       try {
@@ -95,6 +126,7 @@ export default {
           const channel = await member.guild.channels.fetch(config.channels.devIntro);
           if (channel?.isTextBased()) {
             await channel.send({ content: `${member}`, embeds: [devIntroEmbed(member)] });
+            devIntroSent = true;
           }
         } catch (error) {
           logger.warn(`Failed to send dev-intro message: ${error.message}`);
@@ -104,7 +136,7 @@ export default {
 
     // --- Step 5: Telegram join notification via the backend ---
     try {
-      await notifyMemberJoined({
+      telegramSent = await notifyMemberJoined({
         username: member.user.username,
         display_name: member.displayName ?? member.user.globalName ?? member.user.username,
         user_id: member.id,
@@ -127,7 +159,7 @@ export default {
 
     // --- Step 6: Save member information ---
     try {
-      await saveMember({
+      databaseSaved = Boolean(await saveMember({
         guildId: member.guild.id,
         userId: member.id,
         username: member.user.username,
@@ -141,9 +173,26 @@ export default {
         avatarUrl: member.user.displayAvatarURL({ extension: 'png', size: 512 }),
         assignedRole,
         dmStatus,
-      });
+      }));
     } catch (error) {
       logger.warn(`Failed to save member information: ${error.message}`);
+    }
+
+    // --- Forge Guardian v2.0: post the Security Report (best-effort) ---
+    if (scan) {
+      try {
+        await sendSecurityReport(member, {
+          scan,
+          invite,
+          assignedRole,
+          dmStatus,
+          devIntroSent,
+          telegramSent,
+          databaseSaved,
+        });
+      } catch (error) {
+        logger.warn(`Security report failed: ${error.message}`);
+      }
     }
 
     // Log the join to the moderation log channel.
@@ -159,6 +208,9 @@ export default {
         { name: 'Account Age', value: accountAge(member.user.createdTimestamp), inline: true },
         { name: 'Type', value: isBot ? 'Bot' : 'Human', inline: true },
         { name: 'DM Status', value: dmStatus, inline: true },
+        ...(scan
+          ? [{ name: 'Risk Score', value: `${scan.riskScore}/100 (${scan.threatLevel})`, inline: true }]
+          : []),
       ],
     });
   },

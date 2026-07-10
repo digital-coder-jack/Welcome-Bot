@@ -26,6 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes.health import router as health_router
 from app.routes.moderation import router as moderation_router
+from app.routes.security import router as security_router
 from app.routes.telegram import router as telegram_router
 from app.utils.config import settings
 from app.utils.logger import logger
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
 
     # Mount routes.
     app.include_router(moderation_router)
+    app.include_router(security_router)
     app.include_router(telegram_router)
     app.include_router(health_router)
 
@@ -64,13 +66,18 @@ def create_app() -> FastAPI:
             "version": "2.0.0",
             "endpoints": [
                 "POST /moderate",
+                "POST /security/analyze-join",
+                "POST /security/analyze-event",
                 "GET /health",
                 "POST /telegram/member-joined",
                 "POST /telegram/member-left",
                 "POST /telegram/warning",
                 "POST /telegram/kick",
                 "POST /telegram/ban",
+                "POST /telegram/timeout",
                 "POST /telegram/security-alert",
+                "POST /telegram/high-risk-join",
+                "POST /telegram/owner-approval",
             ],
             "groq_configured": settings.groq_configured,
             "telegram_configured": settings.telegram_configured,

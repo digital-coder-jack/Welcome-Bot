@@ -21,10 +21,13 @@ import httpx
 
 from app.schemas.telegram import (
     BanPayload,
+    HighRiskJoinPayload,
     KickPayload,
     MemberJoinedPayload,
     MemberLeftPayload,
+    OwnerApprovalPayload,
     SecurityAlertPayload,
+    TimeoutPayload,
     WarningPayload,
 )
 from app.utils.config import settings
@@ -37,6 +40,14 @@ _SEVERITY_EMOJI = {
     "medium": "🟡",
     "high": "🟠",
     "critical": "🔴",
+}
+
+_THREAT_EMOJI = {
+    "SAFE": "🟢",
+    "LOW": "🔵",
+    "MEDIUM": "🟡",
+    "HIGH": "🟠",
+    "CRITICAL": "🔴",
 }
 
 
@@ -258,6 +269,68 @@ class TelegramService:
                 "━━━━━━━━━━━━━━━━━━━━",
             ]
         )
+        return await self.send_message("\n".join(lines))
+
+    # ------------------------------------------------------------------ #
+    # Forge Guardian Security System v2.0 notifications
+    # ------------------------------------------------------------------ #
+
+    async def notify_timeout(self, data: TimeoutPayload) -> bool:
+        """Send a member-timeout notification to Telegram."""
+        lines = [
+            "🟡 <b>MEMBER TIMED OUT</b>",
+            "━━━━━━━━━━━━━━━━━━━━",
+            f"👤 <b>User:</b> {_esc(data.username)} (<code>{_esc(data.user_id)}</code>)",
+            f"🌐 <b>Server:</b> {_esc(data.server_name)}",
+            f"📄 <b>Reason:</b> {_esc(data.reason)}",
+            f"🛡 <b>Moderator:</b> {_esc(data.moderator)}",
+            f"⏲ <b>Duration:</b> {data.duration_minutes} minutes",
+            f"🕒 <b>Time:</b> {_esc(data.timestamp)}",
+            "━━━━━━━━━━━━━━━━━━━━",
+        ]
+        return await self.send_message("\n".join(lines))
+
+    async def notify_high_risk_join(self, data: HighRiskJoinPayload) -> bool:
+        """Send a rich high-risk join report to Telegram."""
+        emoji = _THREAT_EMOJI.get(data.threat_level.upper(), "🟡")
+        lines = [
+            f"🚨 <b>HIGH RISK JOIN</b> {emoji} <b>{_esc(data.threat_level.upper())}</b>",
+            "━━━━━━━━━━━━━━━━━━━━",
+            f"👤 <b>User:</b> {_esc(data.username)} (<code>{_esc(data.user_id)}</code>)",
+            f"🌐 <b>Server:</b> {_esc(data.server_name)}",
+            f"📊 <b>Risk Score:</b> <b>{data.risk_score}/100</b>",
+            f"🎯 <b>AI Confidence:</b> {round(data.confidence * 100)}%",
+            f"⏳ <b>Account Age:</b> {_esc(data.account_age)}",
+            f"🔗 <b>Invite:</b> <code>{_esc(data.invite_code)}</code> by {_esc(data.inviter)}",
+            f"🔁 <b>Rejoin Count:</b> {data.rejoin_count}",
+            f"🤖 <b>Recommended:</b> {_esc(data.recommended_action)}",
+            f"📄 <b>Reasons:</b> {_esc(data.reasons)}",
+            f"🕒 <b>Time:</b> {_esc(data.timestamp)}",
+            "━━━━━━━━━━━━━━━━━━━━",
+            "⚠️ <b>No automatic action taken — awaiting human approval in Discord.</b>",
+        ]
+        caption = "\n".join(lines)
+        if data.avatar_url:
+            return await self.send_photo(data.avatar_url, caption)
+        return await self.send_message(caption)
+
+    async def notify_owner_approval(self, data: OwnerApprovalPayload) -> bool:
+        """Send an Owner Approval Request notification to Telegram."""
+        emoji = _THREAT_EMOJI.get(data.threat_level.upper(), "🟠")
+        lines = [
+            f"🛎 <b>OWNER APPROVAL REQUEST</b> {emoji} <b>{_esc(data.threat_level.upper())}</b>",
+            "━━━━━━━━━━━━━━━━━━━━",
+            f"🆔 <b>Alert:</b> <code>{_esc(data.alert_id)}</code>",
+            f"👤 <b>User:</b> {_esc(data.username)} (<code>{_esc(data.user_id)}</code>)",
+            f"🌐 <b>Server:</b> {_esc(data.server_name)}",
+            f"📊 <b>Risk Score:</b> <b>{data.risk_score}/100</b>",
+            f"🔎 <b>Source:</b> {_esc(data.source)}",
+            f"🤖 <b>AI Recommendation:</b> {_esc(data.recommended_action)}",
+            f"📄 <b>Reasons:</b> {_esc(data.reasons)}",
+            f"🕒 <b>Time:</b> {_esc(data.timestamp)}",
+            "━━━━━━━━━━━━━━━━━━━━",
+            "👉 <b>Open Discord to approve: ✅ Ban · ⚠ Kick · 🟡 Timeout · 📝 Warn · ❌ Ignore</b>",
+        ]
         return await self.send_message("\n".join(lines))
 
 

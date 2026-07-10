@@ -31,6 +31,7 @@ import { formatUTC } from '../utils/time.js';
 import { notifyKick, notifyWarning } from './telegramClient.js';
 import { recordWarning, SEVERITIES } from '../managers/warningManager.js';
 import { getSettings } from '../database/settingsStore.js';
+import { recordSecurityWarning, recordKick } from '../database/securityStore.js';
 
 /**
  * Resolve the configured log channel from a guild, if any.
@@ -134,6 +135,13 @@ export async function kickMember(member, reason, { moderatorTag = 'Auto-Mod', wa
   } catch (error) {
     logger.warn(`Failed to kick ${userTag}: ${error.message}`);
     return false;
+  }
+
+  // Forge Guardian v2.0: record the kick in the security history (best-effort).
+  try {
+    await recordKick(member.guild.id, userId, reason, moderatorTag);
+  } catch (error) {
+    logger.warn(`Failed to record kick in security history: ${error.message}`);
   }
 
   // Telegram kick notification via the backend (best-effort).
@@ -270,6 +278,13 @@ export async function issueWarning({ guild, member, reason, moderatorId, moderat
     });
   } catch (error) {
     logger.warn(`Telegram warning notification failed: ${error.message}`);
+  }
+
+  // 3b. Forge Guardian v2.0: record the warning in the security history.
+  try {
+    await recordSecurityWarning(guild.id, member.id, reason);
+  } catch (error) {
+    logger.warn(`Failed to record warning in security history: ${error.message}`);
   }
 
   // 4. Log the warning.
