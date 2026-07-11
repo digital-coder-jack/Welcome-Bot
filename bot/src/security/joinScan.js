@@ -32,6 +32,10 @@ import { analyzeJoin } from '../services/aiClient.js';
 import { notifyHighRiskJoin } from '../services/telegramClient.js';
 import { getHistorySummary, recordJoin, recordRiskScore } from '../database/securityStore.js';
 import { raiseSecurityAlert } from './securityAlerts.js';
+import { runAdvancedJoinChecks } from './advancedProtection.js';
+import { recordScanTime, incrementStat } from '../database/statsStore.js';
+import { updateProfile } from '../database/profileStore.js';
+import { logSecurityEvent } from './securityLogger.js';
 
 /**
  * @typedef {Object} JoinScanResult
@@ -112,6 +116,22 @@ export async function runJoinScan(member, invite) {
     });
     result.reasons = local.reasons;
 
+    // --- Phase 8: Advanced Protection heuristics (alts, invite farming,
+    //             fake staff/employee, mass creation, rejoin abuse,
+    //             own blacklists). Heuristics only — Bot-API data + internal
+    //             records; adds to the local score before the AI merge. ---
+    let advancedScore = 0;
+    try {
+      const advanced = await runAdvancedJoinChecks(member, inviteInfo);
+      advancedScore = advanced.score;
+      for (const f of advanced.findings) {
+        if (!result.reasons.includes(f)) result.reasons.push(f);
+      }
+    } catch (error) {
+      logger.warn(`Join scan: advanced protection failed: ${error.message}`);
+    }
+    const localScore = Math.min(100, local.score + advancedScore);
+
     // --- 5. AI Join Analysis (Groq via FastAPI; fails open) ---
     if (config.security.aiAnalysisEnabled) {
       try {
@@ -129,7 +149,7 @@ export async function runJoinScan(member, invite) {
           invite_code: inviteInfo.code,
           inviter: inviteInfo.inviterTag,
           identity_findings: result.identity.findings,
-          local_risk_score: local.score,
+          local_risk_score: Math.min(100, local.score + advancedScore),
           previous_joins: result.history?.previousJoins ?? 0,
           previous_warnings: result.history?.previousWarnings ?? 0,
           previous_kicks: result.history?.previousKicks ?? 0,
@@ -147,7 +167,7 @@ export async function runJoinScan(member, invite) {
     }
 
     // --- 6b. Combine local + AI scores and classify ---
-    result.riskScore = combineScores(local.score, result.ai?.aiAvailable ? result.ai.riskScore : null);
+    result.riskScore = combineScores(localScore, result.ai?.aiAvailable ? result.ai.riskScore : null);
     result.threatLevel = classifyRisk(result.riskScore);
 
     // --- Persist join + risk score to our own database ---
@@ -208,5 +228,32 @@ export async function runJoinScan(member, invite) {
   logger.info(
     `Join scan for ${member.user.tag}: risk ${result.riskScore}/100 (${result.threatLevel}) in ${result.scanTimeMs}ms.`
   );
+
+  // --- Phase 6/7: dashboard metrics + permanent profile + event log ---
+  try {
+    await recordScanTime(member.guild.id, result.scanTimeMs);
+    if (result.alertRaised) await incrementStat(member.guild.id, 'threatsBlocked');
+    await updateProfile(member.guild.id, member.id, {
+      security: {
+        riskScore: result.riskScore,
+        threatLevel: result.threatLevel,
+        suspiciousUsername: (result.identity?.findings?.length ?? 0) > 0,
+        suspiciousAvatar: Boolean(result.account?.hasDefaultAvatar),
+        previousJoins: result.history?.previousJoins ?? 0,
+        previousLeaves: result.history?.previousLeaves ?? 0,
+        rejoinCount: result.history?.rejoinCount ?? 0,
+      },
+    });
+    await logSecurityEvent(member.guild, {
+      type: 'JOIN_SCAN',
+      severity: result.riskScore >= 81 ? 'critical' : result.riskScore >= 61 ? 'high' : result.riskScore >= 41 ? 'medium' : 'info',
+      summary: `Join scan: ${member.user.tag} — ${result.riskScore}/100 (${result.threatLevel}) in ${result.scanTimeMs}ms`,
+      userTag: member.user.tag,
+      userId: member.id,
+      ai: Boolean(result.ai?.aiAvailable),
+    });
+  } catch (error) {
+    logger.warn(`Join scan: dashboard/profile wiring failed: ${error.message}`);
+  }
   return result;
 }

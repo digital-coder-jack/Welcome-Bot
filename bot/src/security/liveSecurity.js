@@ -31,6 +31,10 @@ import { reportSecurityEvent } from '../services/securityService.js';
 import { raiseSecurityAlert } from './securityAlerts.js';
 import { recordTimeout } from '../database/securityStore.js';
 import { clamp, classifyRisk } from './riskEngine.js';
+import { isUserWhitelisted } from '../database/blacklistStore.js';
+import { incrementStat } from '../database/statsStore.js';
+import { bumpProfile } from '../database/profileStore.js';
+import { logSecurityEvent } from './securityLogger.js';
 
 /**
  * Run the v2 live-security pipeline on a message.
@@ -50,6 +54,16 @@ export async function runLiveSecurity(message) {
     logger.warn(`Live security detectors failed: ${error.message}`);
   }
   if (!verdict) return false;
+
+  // Phase 8: whitelisted users bypass the live-security detectors.
+  try {
+    if (await isUserWhitelisted(message.guild.id, message.author.id)) {
+      logger.debug(`Live security: ${message.author.tag} is whitelisted — skipping.`);
+      return false;
+    }
+  } catch {
+    /* fail open to normal processing */
+  }
 
   logger.info(`Live security: ${verdict.type} from ${message.author.tag} — ${verdict.reason}`);
 
@@ -81,6 +95,28 @@ export async function runLiveSecurity(message) {
   const combinedScore = clamp(Math.max(verdict.score, ai?.aiAvailable ? (ai.riskScore ?? 0) : 0));
   const threatLevel = classifyRisk(combinedScore);
   const recommended = ai?.aiAvailable ? ai.recommendedAction : null;
+
+  // --- Phase 6/7: dashboard statistics + member profile + event log ---
+  try {
+    const guildId = message.guild.id;
+    await incrementStat(guildId, 'threatsBlocked');
+    const type = String(verdict.type ?? '').toLowerCase();
+    if (type.includes('spam')) await incrementStat(guildId, 'spamBlocked');
+    if (type.includes('scam') || type.includes('phish') || type.includes('nitro')) {
+      await incrementStat(guildId, 'scamAttempts');
+      await bumpProfile(guildId, message.author.id, 'security', 'scamDetections');
+    }
+    await logSecurityEvent(message.guild, {
+      type: `THREAT_${String(verdict.type ?? 'UNKNOWN').toUpperCase().slice(0, 30)}`,
+      severity: verdict.severity ?? 'medium',
+      summary: `${verdict.reason} — combined risk ${combinedScore}/100 (${threatLevel})`,
+      userTag: message.author.tag,
+      userId: message.author.id,
+      ai: Boolean(ai?.aiAvailable),
+    });
+  } catch (error) {
+    logger.warn(`Live security: stats wiring failed: ${error.message}`);
+  }
 
   // --- 3. Act on the combined verdict (never auto-ban) ---
   try {

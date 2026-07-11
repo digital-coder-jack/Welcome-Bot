@@ -22,6 +22,19 @@
 
 import { createJsonStore } from './jsonStore.js';
 import { logger } from '../utils/logger.js';
+import { incrementStat } from './statsStore.js';
+import { bumpProfile } from './profileStore.js';
+
+/**
+ * Phase 6/7 wiring: every history record fans out to the guild statistics
+ * (statsStore) and the member's permanent profile (profileStore) so the
+ * /security dashboard and member profiles stay accurate from ONE place.
+ * Best-effort — mirror failures never affect the primary history write.
+ */
+function mirror(guildId, userId, statKey, profileField) {
+  incrementStat(guildId, statKey).catch(() => {});
+  if (profileField) bumpProfile(guildId, userId, 'moderation', profileField).catch(() => {});
+}
 
 const store = createJsonStore('security-history.json');
 
@@ -99,6 +112,7 @@ export async function recordJoin(guildId, userId, { inviteCode = 'Unknown', invi
     record.joins.push({ at: new Date().toISOString(), inviteCode, inviter });
     if (record.joins.length > MAX_ENTRIES) record.joins = record.joins.slice(-MAX_ENTRIES);
     store.flush();
+    incrementStat(guildId, 'joins').catch(() => {});
     return record;
   } catch (error) {
     logger.warn(`securityStore recordJoin failed: ${error.message}`);
@@ -108,16 +122,19 @@ export async function recordJoin(guildId, userId, { inviteCode = 'Unknown', invi
 
 /** Record a leave. */
 export function recordLeave(guildId, userId) {
+  incrementStat(guildId, 'leaves').catch(() => {});
   return append(guildId, userId, 'leaves', { at: new Date().toISOString() });
 }
 
 /** Record a warning. */
 export function recordSecurityWarning(guildId, userId, reason = '') {
+  mirror(guildId, userId, 'warnings', 'warnings');
   return append(guildId, userId, 'warnings', { at: new Date().toISOString(), reason: String(reason).slice(0, 300) });
 }
 
 /** Record a timeout. */
 export function recordTimeout(guildId, userId, minutes = 0, reason = '') {
+  mirror(guildId, userId, 'timeouts', 'timeouts');
   return append(guildId, userId, 'timeouts', {
     at: new Date().toISOString(),
     minutes,
@@ -127,11 +144,13 @@ export function recordTimeout(guildId, userId, minutes = 0, reason = '') {
 
 /** Record a kick. */
 export function recordKick(guildId, userId, reason = '', moderator = 'Unknown') {
+  mirror(guildId, userId, 'kicks', 'kicks');
   return append(guildId, userId, 'kicks', { at: new Date().toISOString(), reason: String(reason).slice(0, 300), moderator });
 }
 
 /** Record a ban. */
 export function recordBan(guildId, userId, reason = '', moderator = 'Unknown') {
+  mirror(guildId, userId, 'bans', 'bans');
   return append(guildId, userId, 'bans', { at: new Date().toISOString(), reason: String(reason).slice(0, 300), moderator });
 }
 

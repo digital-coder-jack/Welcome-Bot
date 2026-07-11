@@ -25,6 +25,8 @@ import { logger } from '../utils/logger.js';
 import { notifySecurityAlert } from '../services/telegramClient.js';
 import { sendLog } from '../services/moderationService.js';
 import { getSettings } from '../database/settingsStore.js';
+import { incrementStat } from '../database/statsStore.js';
+import { logSecurityEvent } from './securityLogger.js';
 
 /** Map<guildId, number[]> join timestamps in the rolling window. */
 const joinWindow = new Map();
@@ -113,6 +115,14 @@ export async function activateRaidMode(guild, info) {
   };
   raidState.set(guild.id, state);
   logger.warn(`🚨 RAID MODE ACTIVATED for ${guild.name}: ${info.joinCount} joins in ${info.windowSec}s.`);
+
+  // Phase 6: dashboard statistics + security event log (best-effort).
+  incrementStat(guild.id, 'raidAttempts').catch(() => {});
+  logSecurityEvent(guild, {
+    type: 'RAID_DETECTED',
+    severity: 'critical',
+    summary: `Raid Mode activated: ${info.joinCount} joins in ${info.windowSec}s`,
+  }).catch(() => {});
 
   // --- Lock + slowmode the configured channels (best-effort) ---
   for (const channelId of config.security.raidLockChannelIds) {

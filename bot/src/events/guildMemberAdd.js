@@ -33,6 +33,8 @@ import { saveMember } from '../database/memberStore.js';
 import { runJoinScan } from '../security/joinScan.js';
 import { trackJoinForRaid, isRaidModeActive } from '../security/raidManager.js';
 import { sendSecurityReport } from '../security/securityReport.js';
+import { isLockdownActive } from '../security/lockdownManager.js';
+import { syncProfileFromMember } from '../database/profileStore.js';
 
 export default {
   name: Events.GuildMemberAdd,
@@ -79,11 +81,13 @@ export default {
     let telegramSent = false;
     let databaseSaved = false;
 
-    // During Raid Mode welcomes are paused (safety); everything else continues.
-    const welcomesPaused = raidActive || isRaidModeActive(member.guild.id);
+    // During Raid Mode or manual Lockdown, welcomes are paused (safety);
+    // everything else continues.
+    const lockdownActive = isLockdownActive(member.guild.id);
+    const welcomesPaused = raidActive || isRaidModeActive(member.guild.id) || lockdownActive;
     if (welcomesPaused) {
-      dmStatus = 'Paused (Raid Mode)';
-      logger.warn(`Raid Mode active — welcome flow paused for ${member.user.tag}.`);
+      dmStatus = lockdownActive ? 'Paused (Lockdown)' : 'Paused (Raid Mode)';
+      logger.warn(`${lockdownActive ? 'Lockdown' : 'Raid Mode'} active — welcome flow paused for ${member.user.tag}.`);
     }
 
     if (!isBot && !welcomesPaused) {
@@ -176,6 +180,25 @@ export default {
       }));
     } catch (error) {
       logger.warn(`Failed to save member information: ${error.message}`);
+    }
+
+    // --- Phase 7: create/refresh the permanent security profile ---
+    try {
+      await syncProfileFromMember(member, {
+        inviteUsed: invite.code,
+        inviter: invite.inviterTag,
+        memberNumber: member.guild.memberCount,
+        welcomeDmStatus: dmStatus,
+        forgeMemberStatus: assignedRole !== 'None' ? `Assigned (${assignedRole})` : 'Not assigned',
+        devIntroStatus: devIntroSent ? 'Sent' : 'Not sent',
+        verificationStatus: member.pending ? 'Pending (membership screening)' : 'Passed gateway',
+        bannerUrl: scan?.account?.bannerUrl ?? undefined,
+        accentColor: scan?.account?.accentColor ?? undefined,
+        badges: scan?.account?.badges ?? undefined,
+        publicFlags: scan?.account?.publicFlags ?? undefined,
+      });
+    } catch (error) {
+      logger.warn(`Failed to sync security profile: ${error.message}`);
     }
 
     // --- Forge Guardian v2.0: post the Security Report (best-effort) ---

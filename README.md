@@ -168,6 +168,72 @@ New Member · High Risk Join · Scam Detection · Warning · Timeout · Kick · 
 · Raid Detection · Dangerous Username · Owner Approval Request — all relayed
 through the FastAPI backend (the bot never talks to Telegram directly).
 
+### Phase 6 — Security Dashboard (`commands/security.js`) 🆕
+
+`/security dashboard` shows: Protected Members · Threats Blocked · Spam
+Blocked · Warnings Today · Total Warnings · Timeouts · Kicks · Bans · Scam
+Attempts · Raid Attempts · Current Risk · AI Status · Telegram Status ·
+Database Status · Bot Status · Average Scan Time · Server Security Rating
+(A+…F grade).
+
+| Subcommand | Purpose |
+|---|---|
+| `/security dashboard` | Full security dashboard |
+| `/security member <user>` | Permanent member security profile (Phase 7) |
+| `/security server` | Server-wide security overview |
+| `/security scan <user>` | On-demand security scan (risk score + findings) |
+| `/security logs [count]` | Recent security event log (rolling, 200 kept) |
+| `/security raid [status\|activate\|deactivate]` | Raid Mode status & manual control |
+| `/security lockdown [reason]` | Manual lockdown (locks channels, pauses welcomes) |
+| `/security unlock` | Lift the manual lockdown |
+| `/security whitelist add/remove/view` | Users bypassing live security |
+| `/security blacklist add/remove/view` | Own user / invite / server blacklists |
+| `/security risk` | Current server risk assessment |
+| `/security settings` | Effective security settings |
+| `/security export` | Export all security data as JSON |
+
+Supporting modules: `security/lockdownManager.js` (manual lockdown),
+`security/securityLogger.js` (durable event log + optional
+`SECURITY_LOG_CHANNEL_ID` / `AI_ANALYSIS_CHANNEL_ID` mirroring),
+`database/statsStore.js` (all dashboard counters + daily buckets + average
+scan time + security rating).
+
+### Phase 7 — Permanent Member Security Profile (`database/profileStore.js`) 🆕
+
+Every member gets a durable, structured profile built ONLY from Bot-API data
+and internal records:
+
+- **Identity** — username, display name, nickname, user ID, avatar/banner URL,
+  accent color, public flags, badges, bot/human
+- **Account** — account created, joined server, account age, member number
+- **Server** — roles, highest role, invite used, inviter, verification status,
+  Forge Member status, Developer Intro status, Welcome DM status
+- **Moderation** — warnings, timeouts, kicks, bans, deleted messages, AI violations
+- **Security** — risk score, threat level, scam detections, suspicious
+  username/avatar, previous joins/leaves, rejoin count, reputation
+- **Activity** — message count, voice minutes (`events/voiceStateUpdate.js`),
+  attachments sent, links shared, last seen (`events/messageActivity.js`)
+
+> **Privacy guarantee:** we never collect (or claim to collect) user bios,
+> connected accounts, other servers, emails, phone numbers, IPs, browsers,
+> devices, locations or Nitro status — Discord's Bot API does not expose them.
+
+### Phase 8 — Advanced Protection (`security/advancedProtection.js`) 🆕
+
+Heuristics-only detectors (Bot-API data + internal records, merged into the
+join-scan risk score):
+
+- Alt account detection (age + default avatar + numeric-suffix name + rejoin history)
+- Invite farming detection (one inviter bringing many new accounts per hour)
+- Fake Staff & fake Discord Employee detection (impersonation name patterns)
+- Mass account creation detection (joiners with accounts created minutes apart)
+- Rejoin abuse detection (join/leave cycling)
+- Role & permission abuse watchdog (`events/guildMemberUpdate.js` — rapid role
+  grants / dangerous permissions gained; alerts only, never auto-reverts)
+- Blacklisted user / invite / server databases (`database/blacklistStore.js`;
+  blacklisted invite links posted in chat are auto-deleted)
+- Reputation score (0–100) computed from THIS server's activity only
+
 ## 🛡️ Security & Moderation Workflow
 
 **Smart warning levels** — every warning is classified
@@ -217,6 +283,7 @@ history, **risk score (0–100)** and recent violations, with buttons:
 | `/securityconfig ownerrole <role>` | Owner-override role |
 | `/securityconfig modroles add/remove <role>` | Approval-panel moderator roles |
 | `/securityconfig thresholds warnings/timeout_minutes` | Warning threshold & timeout duration |
+| `/security …` | 🆕 Full Security Dashboard — see Phase 6 table above |
 
 ## Folder Structure
 
@@ -314,6 +381,16 @@ welcome-bot/
 | `SECURITY_JOIN_REPORT_ENABLED` | `true` | Post the Security Report after every join |
 | `SECURITY_APPROVAL_THRESHOLD` | `61` | Risk score ≥ this raises an Owner Approval alert |
 | `SECURITY_TIMEOUT_MINUTES` | `60` | Duration of the 🟡 Timeout button |
+| `SECURITY_LOG_CHANNEL_ID` | — | 🆕 Phase 6 — mirrored security event log channel (optional) |
+| `AI_ANALYSIS_CHANNEL_ID` | — | 🆕 Phase 6 — mirrored AI analysis events channel (optional) |
+| `SECURITY_DASHBOARD_CHANNEL_ID` | — | 🆕 Phase 6 — reserved dashboard channel (optional) |
+| `DEVINTRO_CHANNEL_ID` | — | 🆕 Alias for `DEV_INTRO_CHANNEL_ID` (either works) |
+
+All dedicated security channels (`SECURITY_ALERT_CHANNEL_ID`,
+`SECURITY_LOG_CHANNEL_ID`, `AI_ANALYSIS_CHANNEL_ID`,
+`SECURITY_DASHBOARD_CHANNEL_ID`, `WELCOME_CHANNEL_ID`, `RULES_CHANNEL_ID`,
+`DEVINTRO_CHANNEL_ID`, `SUPPORT_CHANNEL_ID`) are **optional** — unset
+channels are silently skipped.
 
 Config is read **only** from environment variables.
 
@@ -354,6 +431,10 @@ Required Discord permissions/intents: **Manage Guild** (invite tracking),
 | `modqueue.json` | Pending/resolved moderation cases |
 | `audit.json` | Append-only audit trail (last 2000 entries per guild) |
 | `security-history.json` | 🆕 Guardian v2.0 per-member security history (joins, leaves, warnings, timeouts, kicks, bans, risk scores, rejoin count) |
+| `security-stats.json` | 🆕 Phase 6 — guild security statistics (dashboard counters, daily buckets, scan times) |
+| `member-profiles.json` | 🆕 Phase 7 — permanent member security profiles (identity/account/server/moderation/security/activity) |
+| `security-lists.json` | 🆕 Phase 8 — blacklists (users/invites/servers) + whitelist |
+| `security-log.json` | 🆕 Phase 6 — rolling security event log (200 events per guild) |
 
 ## Deployment Status
 

@@ -32,6 +32,8 @@ import { notifyKick, notifyWarning } from './telegramClient.js';
 import { recordWarning, SEVERITIES } from '../managers/warningManager.js';
 import { getSettings } from '../database/settingsStore.js';
 import { recordSecurityWarning, recordKick } from '../database/securityStore.js';
+import { incrementStat } from '../database/statsStore.js';
+import { bumpProfile } from '../database/profileStore.js';
 
 /**
  * Resolve the configured log channel from a guild, if any.
@@ -80,6 +82,17 @@ export async function deleteMessage(message, { reason, rule = null, source = 'au
   } catch (error) {
     logger.warn(`Failed to delete message ${message.id}: ${error.message}`);
     return;
+  }
+
+  // Phase 6/7: dashboard + member-profile counters (best-effort).
+  incrementStat(message.guild.id, 'messagesDeleted').catch(() => {});
+  if (source === 'auto') incrementStat(message.guild.id, 'spamBlocked').catch(() => {});
+  if (message.author?.id) {
+    bumpProfile(message.guild.id, message.author.id, 'moderation', 'deletedMessages').catch(() => {});
+    if (source === 'ai') {
+      bumpProfile(message.guild.id, message.author.id, 'moderation', 'aiViolations').catch(() => {});
+      incrementStat(message.guild.id, 'aiViolations').catch(() => {});
+    }
   }
 
   await sendLog(message.guild, {
