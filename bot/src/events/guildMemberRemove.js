@@ -2,13 +2,20 @@
  * events/guildMemberRemove.js
  * ---------------------------------------------------------------------------
  * The Goodbye System. When a member leaves (or is kicked/banned):
- *   1. Classify the departure (voluntary / kick / ban) via the audit log.
+ *   0. Resolve partial members (the member object is frequently a PARTIAL on
+ *      this event — resolving it up front prevents silent failures).
+ *   1. Classify the departure (voluntary / kick / ban) via the audit log,
+ *      with a short retry to beat the audit-log write race.
  *   2. VOLUNTARY leaves only: send the Premium Farewell DM (Developer Forge
  *      branded embed + GIF + buttons). Kicked/banned members NEVER get it.
+ *      Closed DMs (Discord error 50007) are caught and logged.
  *   3. Send a goodbye message to the configured goodbye channel.
  *   4. Send a Telegram member-left notification via the FastAPI backend.
  *   5. Mark the member as left in the local member store.
  *   6. Log the departure to the moderation log channel.
+ *
+ * Every step is individually try/catch-guarded so no single failure can
+ * abort the remaining steps — the farewell DM ALWAYS gets its chance to run.
  * ---------------------------------------------------------------------------
  */
 
@@ -35,19 +42,39 @@ export default {
 
     logger.info(`Member left: ${member.user?.tag ?? member.id}.`);
 
-    // 0. Classify the departure ONCE (voluntary / kick / ban / unknown) so
-    //    downstream steps agree on the verdict.
-    const departureType = await classifyDeparture(member.guild, member.id);
-
-    // 0b. Premium Farewell DM — voluntary departures ONLY. Kicked or banned
-    //     members never receive it; closed DMs are silently ignored.
-    try {
-      await sendFarewellDM(member, departureType);
-    } catch (error) {
-      logger.warn(`Farewell DM step failed unexpectedly: ${error.message}`);
+    // 0. Resolve partials FIRST. On guildMemberRemove the member is often a
+    //    PARTIAL (uncached) — accessing .user/.guild data on it can throw or
+    //    yield undefined, silently killing the rest of this handler before
+    //    the farewell DM step ever runs. Fetch the full user up front.
+    if (!member.user) {
+      try {
+        await member.client.users.fetch(member.id);
+      } catch (error) {
+        logger.warn(`Could not resolve user for departed member ${member.id}: ${error.message}`);
+      }
     }
 
-    // 1. Goodbye message.
+    // 1. Classify the departure ONCE (voluntary / kick / ban / unknown) so
+    //    downstream steps agree on the verdict. Wrapped so an audit-log
+    //    failure can NEVER abort the rest of the leave flow.
+    logger.info(`Checking if ${member.user?.tag ?? member.id} was banned/kicked...`);
+    let departureType = 'unknown';
+    try {
+      departureType = await classifyDeparture(member.guild, member.id);
+    } catch (error) {
+      logger.warn(`Departure classification failed unexpectedly: ${error.message}`);
+    }
+
+    // 2. Premium Farewell DM — voluntary departures ONLY. Kicked or banned
+    //    members never receive it; closed DMs are caught and logged.
+    try {
+      const dmResult = await sendFarewellDM(member, departureType);
+      logger.info(`Farewell DM step finished with result: ${dmResult}.`);
+    } catch (error) {
+      logger.warn(`Farewell DM step failed unexpectedly: ${error.stack || error.message}`);
+    }
+
+    // 3. Goodbye message.
     if (config.channels.goodbye) {
       try {
         const channel = await member.guild.channels.fetch(config.channels.goodbye);
@@ -68,7 +95,7 @@ export default {
         .map((role) => role.name)
         .join(', ') || 'None';
 
-    // 2. Telegram member-left notification via the backend.
+    // 4. Telegram member-left notification via the backend.
     try {
       await notifyMemberLeft({
         username: member.user?.username ?? 'Unknown',
@@ -86,21 +113,21 @@ export default {
       logger.warn(`Telegram leave notification failed: ${error.message}`);
     }
 
-    // 3. Mark the member as left in the store.
+    // 5. Mark the member as left in the store.
     try {
       await markMemberLeft(member.guild.id, member.id, new Date(now).toISOString());
     } catch (error) {
       logger.warn(`Failed to update member store: ${error.message}`);
     }
 
-    // 3b. Forge Guardian v2.0: record the leave in the security history.
+    // 5b. Forge Guardian v2.0: record the leave in the security history.
     try {
       await recordLeave(member.guild.id, member.id);
     } catch (error) {
       logger.warn(`Failed to record leave in security history: ${error.message}`);
     }
 
-    // 4. Log the departure.
+    // 6. Log the departure.
     await sendLog(member.guild, {
       action: 'Member Left',
       color: COLORS.goodbye,

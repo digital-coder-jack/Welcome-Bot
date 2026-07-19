@@ -17,7 +17,12 @@
  *   - Animated farewell GIF at the top (embed image), brand thumbnail,
  *     farewell banner, branded footer + timestamp.
  *   - Link buttons: 🌐 Rejoin · 💬 Contact Staff · 📚 Community Website.
- *   - If the member's DMs are closed, the error is silently ignored.
+ *   - If the member's DMs are closed (Discord error 50007), the error is
+ *     caught and logged as "Could not send farewell DM (DMs closed)."
+ *
+ * Every stage logs its progress: audit-log check → classification verdict →
+ * embed preparation → DM attempt → success/exact-error, so the full flow is
+ * always traceable in the console.
  * ---------------------------------------------------------------------------
  */
 
@@ -62,10 +67,20 @@ function pickFarewellGif() {
   return FAREWELL_GIFS[Math.floor(Math.random() * FAREWELL_GIFS.length)];
 }
 
+/** Sleep helper for the audit-log race-condition retry. */
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Determine whether the departure was a kick or ban by reading the guild
  * audit log (best-effort — requires View Audit Log). Entries older than
  * 60 seconds are ignored so historic actions never misclassify a new leave.
+ *
+ * RACE-CONDITION FIX: guildMemberRemove frequently fires BEFORE Discord has
+ * written the kick/ban audit-log entry. We therefore wait a short moment and
+ * retry once before declaring the departure voluntary, so kicked/banned
+ * members are never misclassified (and never DMed).
  *
  * @param {import('discord.js').Guild} guild
  * @param {string} userId
@@ -73,9 +88,12 @@ function pickFarewellGif() {
  */
 export async function classifyDeparture(guild, userId) {
   const RECENT_MS = 60_000;
-  const now = Date.now();
+  const RETRY_DELAY_MS = 1_500;
 
-  try {
+  logger.info(`Farewell: checking if member ${userId} was banned/kicked (audit log)...`);
+
+  async function checkOnce() {
+    const now = Date.now();
     const [kicks, bans] = await Promise.all([
       guild.fetchAuditLogs({ type: AuditLogEvent.MemberKick, limit: 5 }),
       guild.fetchAuditLogs({ type: AuditLogEvent.MemberBanAdd, limit: 5 }),
@@ -92,6 +110,21 @@ export async function classifyDeparture(guild, userId) {
     if (wasKicked) return 'kick';
 
     return 'voluntary';
+  }
+
+  try {
+    // First pass — often runs before the audit-log entry exists.
+    let verdict = await checkOnce();
+
+    // If it looks voluntary, wait briefly and re-check once so a kick/ban
+    // entry that lands a moment later is still caught.
+    if (verdict === 'voluntary') {
+      await sleep(RETRY_DELAY_MS);
+      verdict = await checkOnce();
+    }
+
+    logger.info(`Farewell: departure classified as "${verdict}" for ${userId}.`);
+    return verdict;
   } catch (error) {
     logger.warn(
       `Farewell: could not read audit log (${error.message}) — departure type unknown.`
@@ -228,8 +261,11 @@ async function buildFarewellButtons(guild, farewellSettings) {
  *
  * Safety guarantees:
  *   - Skips bots.
- *   - Skips kicked/banned members (audit log + local trackers).
- *   - Never throws — closed DMs are silently ignored.
+ *   - Skips kicked/banned members (audit-log verified, with retry).
+ *   - Never throws — closed DMs (50007) are caught and logged as
+ *     "Could not send farewell DM (DMs closed)."; any other Discord error
+ *     is logged with its exact code + message.
+ *   - A settings-store or button-builder failure can never block the DM.
  *
  * @param {import('discord.js').GuildMember|import('discord.js').PartialGuildMember} member
  * @param {'kick'|'ban'|'voluntary'|'unknown'} [departureType]  pre-computed
@@ -237,35 +273,66 @@ async function buildFarewellButtons(guild, farewellSettings) {
  * @returns {Promise<'Delivered'|'Disabled'|'Skipped (not voluntary)'|'Failed (DMs closed)'>}
  */
 export async function sendFarewellDM(member, departureType) {
-  if (member.user?.bot) return 'Skipped (not voluntary)';
+  const memberLabel = member.user?.tag ?? member.id;
 
-  const settings = await getSettings(member.guild.id);
-  const farewell = settings.farewell ?? {};
-  if (farewell.dmEnabled === false) return 'Disabled';
+  if (member.user?.bot) {
+    logger.info(`Farewell DM skipped for ${memberLabel}: member is a bot.`);
+    return 'Skipped (not voluntary)';
+  }
+
+  let farewell = {};
+  try {
+    const settings = await getSettings(member.guild.id);
+    farewell = settings.farewell ?? {};
+  } catch (error) {
+    // Settings store failure must NEVER block the farewell DM — fall back
+    // to defaults (DM enabled, no custom links/banner).
+    logger.warn(`Farewell: could not load settings (${error.message}) — using defaults.`);
+  }
+
+  if (farewell.dmEnabled === false) {
+    logger.info(`Farewell DM skipped for ${memberLabel}: disabled via /farewellconfig.`);
+    return 'Disabled';
+  }
 
   // NEVER send the farewell to kicked or banned members.
   const type = departureType ?? (await classifyDeparture(member.guild, member.id));
   if (type === 'kick' || type === 'ban') {
-    logger.info(`Farewell DM skipped for ${member.user?.tag ?? member.id}: departure was a ${type}.`);
+    logger.info(`Farewell DM skipped for ${memberLabel}: departure was a ${type}.`);
     return 'Skipped (not voluntary)';
   }
 
-  const buttons = await buildFarewellButtons(member.guild, farewell);
+  logger.info(`Farewell: preparing farewell embed for ${memberLabel}...`);
+  const embeds = [farewellGifEmbed(), farewellEmbed(member, farewell)];
 
+  let buttons = null;
+  try {
+    buttons = await buildFarewellButtons(member.guild, farewell);
+  } catch (error) {
+    // Button building must never block the DM itself.
+    logger.warn(`Farewell: could not build link buttons (${error.message}) — sending without them.`);
+  }
+
+  logger.info(`Farewell: attempting to send DM to ${memberLabel}...`);
   try {
     // The member has already left, so resolve the underlying User —
     // GuildMember#send can fail on partial members after departure.
     const user = member.user ?? (await member.client.users.fetch(member.id));
     await user.send({
-      embeds: [farewellGifEmbed(), farewellEmbed(member, farewell)],
+      embeds,
       ...(buttons ? { components: [buttons] } : {}),
     });
-    logger.info(`Premium farewell DM delivered to ${member.user?.tag ?? member.id}.`);
+    logger.success(`Farewell DM sent successfully to ${memberLabel}.`);
     return 'Delivered';
   } catch (error) {
     // Discord error 50007 = Cannot send messages to this user (DMs closed).
-    // Per spec: silently ignore — never let it break the leave flow.
-    logger.debug?.(`Farewell DM not delivered (${error.message}).`);
+    if (error.code === 50007) {
+      logger.warn('Could not send farewell DM (DMs closed).');
+    } else {
+      logger.warn(
+        `Farewell DM failed for ${memberLabel} — Discord error ${error.code ?? 'unknown'}: ${error.message}`
+      );
+    }
     return 'Failed (DMs closed)';
   }
 }

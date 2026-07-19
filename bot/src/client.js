@@ -32,7 +32,9 @@ export function createClient() {
       GatewayIntentBits.GuildInvites, // invite tracking (which invite was used)
     ],
     // Partials let us receive events for uncached objects (e.g. DM channels).
-    partials: [Partials.Channel, Partials.GuildMember, Partials.Message],
+    // Partials.User ensures guildMemberRemove still fires with usable data
+    // even when the departing member's User object was never cached.
+    partials: [Partials.Channel, Partials.GuildMember, Partials.Message, Partials.User],
   });
 
   // Collection used by the command handler to store slash commands by name.
