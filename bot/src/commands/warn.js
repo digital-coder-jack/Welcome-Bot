@@ -10,6 +10,7 @@
  */
 
 import { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
+import { MAX_RULE } from '../config.js';
 import { issueWarning } from '../services/moderationService.js';
 
 export const data = new SlashCommandBuilder()
@@ -26,9 +27,9 @@ export const data = new SlashCommandBuilder()
   .addIntegerOption((option) =>
     option
       .setName('rule')
-      .setDescription('Rule number this warning relates to (1-10)')
+      .setDescription(`Forge Protocol rule number this warning relates to (1-${MAX_RULE})`)
       .setMinValue(1)
-      .setMaxValue(10)
+      .setMaxValue(MAX_RULE)
       .setRequired(false)
   )
   .addStringOption((option) =>

@@ -165,17 +165,21 @@ export const config = Object.freeze({
  * Keep in sync with the backend prompt (backend/app/prompts/moderation_prompt.py).
  */
 export const SERVER_RULES = Object.freeze([
-  { number: 1, title: 'Be Respectful', description: 'Treat every member with respect and courtesy.' },
-  { number: 2, title: 'No Hate Speech', description: 'Racism, sexism, homophobia and other hate speech are forbidden.' },
-  { number: 3, title: 'Keep It Appropriate', description: 'No NSFW, gore or otherwise inappropriate content.' },
-  { number: 4, title: 'No Spamming', description: 'Avoid spam, flooding and repeated messages.' },
-  { number: 5, title: 'Use Channels Correctly', description: 'Post content in the appropriate channels.' },
-  { number: 6, title: 'No Toxic Behavior', description: 'No harassment, personal attacks or threats.' },
-  { number: 7, title: 'Respect Privacy', description: 'Never share anyone\u2019s private information.' },
-  { number: 8, title: 'No Advertising', description: 'No unsolicited ads or invite links to other servers.' },
-  { number: 9, title: 'Follow Discord ToS', description: 'Abide by the Discord Terms of Service at all times.' },
-  { number: 10, title: 'Listen to Staff', description: 'Follow instructions from moderators and administrators.' },
+  { number: 1, title: 'Be Respectful', description: 'Treat everyone with kindness and respect. No bullying, harassment, threats, insults, or personal attacks.' },
+  { number: 2, title: 'No Hate Speech', description: 'No discrimination or hateful content based on race, religion, nationality, ethnicity, disability, gender, sexuality, or any protected characteristic.' },
+  { number: 3, title: 'Keep It Appropriate', description: 'No NSFW, explicit sexual content, graphic gore, illegal content, or other clearly inappropriate material.' },
+  { number: 4, title: 'No Spamming', description: 'No message flooding, repeated messages, repeated emojis, excessive mentions, mass pings, copypasta flooding, or intentional disruption.' },
+  { number: 5, title: 'Use Channels Correctly', description: 'Use channels for their intended purpose. Off-topic chats are politely redirected, not warned, unless abuse is intentional.' },
+  { number: 6, title: 'No Toxic Behavior', description: 'No trolling, baiting, provoking, flaming, starting drama, encouraging arguments, or intentionally making members uncomfortable.' },
+  { number: 7, title: 'Respect Privacy', description: 'Never share personal information without permission. Never encourage doxxing or expose private information.' },
+  { number: 8, title: 'No Advertising', description: 'No promotion of Discord servers, products, services, referral links, social media, or self-promotion without staff approval.' },
+  { number: 9, title: 'No Recruitment, Hiring, or Referral Posts', description: 'No hiring posts, internships, recruitment, talent hunting, referral requests, team recruitment, or job advertisements unless approved by staff.' },
+  { number: 10, title: 'Follow Discord Terms of Service', description: 'Only obvious violations of Discord\u2019s Terms of Service and Community Guidelines are enforced.' },
+  { number: 11, title: 'Listen to Staff', description: 'Ignoring official moderator instructions may result in moderation.' },
 ]);
+
+/** Highest valid Forge Protocol rule number (kept in sync with SERVER_RULES). */
+export const MAX_RULE = SERVER_RULES[SERVER_RULES.length - 1].number;
 
 /**
  * Validate that the minimum required secrets are present.

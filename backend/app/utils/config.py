@@ -29,7 +29,12 @@ class Settings(BaseSettings):
     port: int = 8000
 
     # --- Moderation tuning ---
+    # General floor: verdicts below this are ignored entirely.
     min_confidence: float = 0.5
+    # Forge Protocol v4: a formal WARNING requires >= 95% confidence.
+    # Violations between min_confidence and this threshold are downgraded
+    # to NO VIOLATION (zero-false-positive policy).
+    min_warn_confidence: float = 0.95
 
     # --- CORS ---
     allowed_origins: str = "*"

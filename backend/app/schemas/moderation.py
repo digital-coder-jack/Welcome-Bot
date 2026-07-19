@@ -28,6 +28,14 @@ class ModerationRequest(BaseModel):
     content: str = Field(..., min_length=1, max_length=4000, description="Message text to analyse.")
     author_id: Optional[str] = Field(None, description="Discord user ID of the author.")
     channel_id: Optional[str] = Field(None, description="Discord channel ID.")
+    context: Optional[str] = Field(
+        None,
+        max_length=6000,
+        description=(
+            "Surrounding conversation (previous/following messages, oldest "
+            "first). Forge Protocol: context must be read before judging."
+        ),
+    )
 
     @field_validator("content")
     @classmethod
@@ -42,7 +50,7 @@ class ModerationResponse(BaseModel):
     """Response returned to the bot from POST /moderate."""
 
     violation: bool = Field(..., description="Whether the message violates a rule.")
-    rule: Optional[int] = Field(None, ge=1, le=10, description="Violated rule number (1-10), if any.")
+    rule: Optional[int] = Field(None, ge=1, le=11, description="Violated Forge Protocol rule number (1-11), if any.")
     rule_title: Optional[str] = Field(None, description="Exact Forge Protocol rule title, if violated.")
     offending_message: Optional[str] = Field(None, description="Exact offending message text, if violated.")
     confidence: float = Field(..., ge=0.0, le=1.0, description="Model confidence 0-1.")

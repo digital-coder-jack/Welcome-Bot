@@ -28,7 +28,7 @@ async def moderate(request: ModerationRequest) -> ModerationResponse:
     conforms to ModerationResponse thanks to the service's validation and
     fallback logic.
     """
-    result = await groq_service.moderate(request.content)
+    result = await groq_service.moderate(request.content, request.context)
     logger.info(
         "Moderated message (author=%s): violation=%s rule=%s action=%s conf=%.2f",
         request.author_id,

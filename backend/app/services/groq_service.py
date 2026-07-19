@@ -17,7 +17,7 @@ from typing import Optional
 
 from groq import Groq
 
-from app.prompts.moderation_prompt import SERVER_RULES, SYSTEM_PROMPT, build_user_prompt
+from app.prompts.moderation_prompt import MAX_RULE, SERVER_RULES, SYSTEM_PROMPT, build_user_prompt
 from app.schemas.moderation import ModerationAction, ModerationResponse
 from app.utils.config import settings
 from app.utils.logger import logger
@@ -42,9 +42,10 @@ class GroqModerationService:
             self._client = Groq(api_key=settings.groq_api_key)
         return self._client
 
-    async def moderate(self, content: str) -> ModerationResponse:
+    async def moderate(self, content: str, context: Optional[str] = None) -> ModerationResponse:
         """
-        Analyse a message and return a validated ModerationResponse.
+        Analyse a message (with optional conversation context) and return a
+        validated ModerationResponse.
 
         Falls back to a heuristic if Groq is not configured or the call fails.
         """
@@ -53,18 +54,18 @@ class GroqModerationService:
             return self._heuristic(content)
 
         try:
-            return self._call_groq(content)
+            return self._call_groq(content, context)
         except Exception as exc:  # noqa: BLE001 - we want a robust catch-all here.
             logger.error("Groq moderation failed (%s); using heuristic fallback.", exc)
             return self._heuristic(content)
 
-    def _call_groq(self, content: str) -> ModerationResponse:
+    def _call_groq(self, content: str, context: Optional[str] = None) -> ModerationResponse:
         """Perform the actual Groq chat completion and parse the result."""
         completion = self.client.chat.completions.create(  # type: ignore[union-attr]
             model=settings.groq_model,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": build_user_prompt(content)},
+                {"role": "user", "content": build_user_prompt(content, context)},
             ],
             temperature=0.0,  # deterministic moderation decisions
             max_tokens=300,
@@ -86,9 +87,9 @@ class GroqModerationService:
             confidence = 0.0
         confidence = max(0.0, min(1.0, confidence))
 
-        # Rule -> integer 1-10 or None.
+        # Rule -> integer 1-MAX_RULE (Forge Protocol has 11 rules) or None.
         rule = data.get("rule")
-        if not (isinstance(rule, int) and 1 <= rule <= 10):
+        if not (isinstance(rule, int) and 1 <= rule <= MAX_RULE):
             rule = None
 
         # Action -> validated enum.
@@ -110,13 +111,15 @@ class GroqModerationService:
         if not violation:
             rule = None
             action = ModerationAction.NONE
-        # Downgrade low-confidence violations to no action (Forge Protocol:
-        # false positives are worse than missing a borderline case).
-        elif confidence < settings.min_confidence:
+        # Forge Protocol v4 — ZERO FALSE POSITIVE POLICY:
+        # a formal violation verdict requires >= 95% confidence. Anything
+        # below (including the general min_confidence floor) is downgraded
+        # to NO VIOLATION / NONE. Never warn an innocent member.
+        elif confidence < max(settings.min_confidence, settings.min_warn_confidence):
             violation = False
             rule = None
             action = ModerationAction.NONE
-            reason = "Below confidence threshold"
+            reason = "Below 95% confidence threshold — NO VIOLATION"
 
         if violation and rule is not None:
             rule_title = next((t for n, t, _ in SERVER_RULES if n == rule), None)
@@ -141,14 +144,17 @@ class GroqModerationService:
         lowered = content.lower()
         for keyword in _FALLBACK_TOXIC_KEYWORDS:
             if keyword in lowered:
+                # Zero-false-positive policy: the keyword heuristic can never
+                # reach 95% certainty, so it may only recommend deletion for
+                # moderator review — never a formal warning.
                 return ModerationResponse(
                     violation=True,
                     rule=6,  # No Toxic Behavior
                     rule_title="No Toxic Behavior",
                     offending_message=content[:200],
                     confidence=0.8,
-                    reason="Detected toxic/insulting language (heuristic).",
-                    action=ModerationAction.WARN,
+                    reason="Possible toxic language (heuristic — below 95%, no warning).",
+                    action=ModerationAction.DELETE,
                 )
 
         return ModerationResponse(

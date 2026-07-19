@@ -36,6 +36,22 @@ import { incrementStat } from '../database/statsStore.js';
 import { bumpProfile } from '../database/profileStore.js';
 
 /**
+ * Forge Protocol — never warn twice for the same message.
+ * Message IDs that already produced a warning (bounded in-memory cache).
+ */
+const warnedMessageIds = new Set();
+const WARNED_CACHE_LIMIT = 2000;
+
+/** Remember a message ID as already warned (bounded FIFO cache). */
+function rememberWarnedMessage(messageId) {
+  warnedMessageIds.add(messageId);
+  if (warnedMessageIds.size > WARNED_CACHE_LIMIT) {
+    const first = warnedMessageIds.values().next().value;
+    warnedMessageIds.delete(first);
+  }
+}
+
+/**
  * Resolve the configured log channel from a guild, if any.
  * @param {import('discord.js').Guild} guild
  * @returns {Promise<import('discord.js').TextChannel|null>}
@@ -249,11 +265,57 @@ export async function banMember(member, reason, { moderatorTag = 'Auto-Mod', del
  * @param {number|null} [params.rule]
  * @param {'command'|'auto'|'ai'} [params.source='command']
  * @param {'low'|'medium'|'high'|'critical'} [params.severity]  explicit severity.
+ * @param {object} [params.forge]  Forge Protocol warning-format extras:
+ *                 { ruleTitle, offendingMessage, confidence }.
+ * @param {string} [params.messageId]  Discord message ID that triggered the
+ *                 warning — used to guarantee no message is ever warned twice.
  * @returns {Promise<{count:number, max:number, kicked:boolean, escalated:boolean, severity:string}>}
  */
-export async function issueWarning({ guild, member, reason, moderatorId, moderatorTag, rule = null, source = 'command', severity }) {
+export async function issueWarning({ guild, member, reason, moderatorId, moderatorTag, rule = null, source = 'command', severity, forge = null, messageId = null }) {
   const settings = await getSettings(guild.id);
   const max = settings.security.warnThreshold || config.maxWarnings;
+
+  // 0a. Forge Protocol — never warn twice for the same message.
+  if (messageId && warnedMessageIds.has(messageId)) {
+    logger.info(`Duplicate warning suppressed for message ${messageId} (Forge Protocol).`);
+    const existing = await countWarnings(guild.id, member.id);
+    return { count: existing, max, kicked: false, escalated: false, severity: severity ?? 'medium' };
+  }
+
+  // 0b. Forge Protocol — WARNING LIMIT: maximum warnings = max (3).
+  //     Never create Warning 4. If Warning 3 has already been issued,
+  //     notify moderators (approval panel) instead of adding another warning.
+  const current = await countWarnings(guild.id, member.id);
+  if (current >= max) {
+    logger.info(
+      `${member.user.tag} already has ${current}/${max} warnings — not creating another; notifying moderators.`
+    );
+    if (messageId) rememberWarnedMessage(messageId);
+    let escalated = false;
+    try {
+      const { escalateToModerators } = await import('../managers/approvalSystem.js');
+      await escalateToModerators(member, {
+        reason: `Warning limit already reached (${current}/${max}). New violation: ${reason}`,
+        severity: severity ?? 'high',
+        warningCount: current,
+      });
+      escalated = true;
+    } catch (error) {
+      logger.error(`Failed to notify moderators after warning limit: ${error.stack || error}`);
+    }
+    await sendLog(guild, {
+      action: 'Warning Limit Reached',
+      color: COLORS.danger,
+      userTag: member.user.tag,
+      userId: member.id,
+      moderatorTag,
+      reason: `No Warning ${current + 1} created (limit ${max}). Moderators notified. Violation: ${reason}`,
+      rule,
+    });
+    return { count: current, max, kicked: false, escalated, severity: severity ?? 'high' };
+  }
+
+  if (messageId) rememberWarnedMessage(messageId);
 
   // 1. Classify & persist.
   const { total, severity: resolvedSeverity } = await recordWarning({
@@ -300,7 +362,19 @@ export async function issueWarning({ guild, member, reason, moderatorId, moderat
     logger.warn(`Failed to record warning in security history: ${error.message}`);
   }
 
-  // 4. Log the warning.
+  // 4. Log the warning — Forge Protocol warning format: Member, Rule Number,
+  //    Rule Name, Exact Message, Reason, Confidence %, Timestamp (embed
+  //    timestamp is set by moderationLogEmbed).
+  const extraFields = [
+    { name: 'Warnings', value: `${total} / ${max}`, inline: true },
+    { name: 'Severity', value: SEVERITIES[resolvedSeverity]?.label ?? resolvedSeverity, inline: true },
+  ];
+  if (forge?.confidence != null) {
+    extraFields.push({ name: 'Confidence', value: `${Math.round(forge.confidence * 100)}%`, inline: true });
+  }
+  if (forge?.offendingMessage) {
+    extraFields.push({ name: 'Exact Message', value: forge.offendingMessage.slice(0, 1000) });
+  }
   await sendLog(guild, {
     action: 'Warning',
     color: SEVERITIES[resolvedSeverity]?.color ?? COLORS.warning,
@@ -309,10 +383,7 @@ export async function issueWarning({ guild, member, reason, moderatorId, moderat
     moderatorTag,
     reason,
     rule,
-    extraFields: [
-      { name: 'Warnings', value: `${total} / ${max}`, inline: true },
-      { name: 'Severity', value: SEVERITIES[resolvedSeverity]?.label ?? resolvedSeverity, inline: true },
-    ],
+    extraFields,
   });
   logger.info(`Warned ${member.user.tag} (${total}/${max}) [${source}/${resolvedSeverity}]: ${reason}`);
 

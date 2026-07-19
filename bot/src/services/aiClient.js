@@ -97,16 +97,25 @@ function normalise(data) {
  * @param {string} params.content   The message text to analyse.
  * @param {string} [params.authorId]
  * @param {string} [params.channelId]
+ * @param {string} [params.context]  Surrounding conversation (previous /
+ *                                   following messages, oldest first) — the
+ *                                   Forge Protocol requires reading context
+ *                                   before judging any message.
  * @returns {Promise<ModerationResult>}
  */
-export async function analyzeMessage({ content, authorId, channelId }) {
+export async function analyzeMessage({ content, authorId, channelId, context }) {
   const url = `${config.ai.baseUrl.replace(/\/$/, '')}/moderate`;
 
   try {
     const response = await fetchWithTimeout(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, author_id: authorId, channel_id: channelId }),
+      body: JSON.stringify({
+        content,
+        author_id: authorId,
+        channel_id: channelId,
+        context: context || undefined,
+      }),
     });
 
     if (!response.ok) {

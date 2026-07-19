@@ -260,22 +260,36 @@ join-scan risk score):
 
 ## 🛡️ Security & Moderation Workflow
 
-**The Forge Protocol (AI moderation prompt v3)** 🆕 — the backend prompt
-(`backend/app/prompts/moderation_prompt.py`) now enforces the official Forge
-Protocol contract:
+**FORGE GUARDIAN — The Forge Protocol v4** 🆕 — the canonical protocol lives
+in [`docs/FORGE_PROTOCOL.md`](docs/FORGE_PROTOCOL.md); the AI system prompt
+(`backend/app/prompts/moderation_prompt.py`) and the bot rule list
+(`bot/src/config.js`) enforce it:
 
-- Warns **only on CLEAR violations** — greetings, jokes, hobby talk (anime,
-  gaming, music, movies), compliments, questions and emojis are on a hard
-  never-warn list.
-- **Never infers intent**; ambiguity ⇒ `NO VIOLATION`. False positives are
-  explicitly worse than missed borderline cases (violations under 0.75
-  confidence are downgraded to no violation).
-- Every violation verdict carries the **exact rule number + title** (resolved
-  from the canonical rule list, never hallucinated), the **exact offending
-  message** and a brief explanation — new `rule_title` / `offending_message`
-  fields in the `/moderate` response, passed through `bot/src/services/aiClient.js`.
+- **11 official rules** — including the new
+  **Rule 9: No Recruitment, Hiring, or Referral Posts** and the split
+  **Rule 10: Follow Discord ToS** / **Rule 11: Listen to Staff**.
+- **ZERO FALSE POSITIVE POLICY** — never warn an innocent member; ambiguity
+  ⇒ `NO VIOLATION`. A hard never-warn list protects greetings, small talk,
+  hobby talk (anime, gaming, music, movies, food…), programming/AI/tech
+  discussion, jokes, memes, GIFs, emojis, typos, repeated letters
+  ("heyyy") and casual expressions ("lol", "bruh", "hru", "wyd").
+- **95% confidence gate** — warnings require ≥ 0.95 AI confidence, enforced
+  three times: in the prompt, in the backend
+  (`MIN_WARN_CONFIDENCE=0.95`, `groq_service._validate`) and in the bot
+  (`autoModerator.AI_CONFIDENCE_THRESHOLD = 0.95`). Below 95% ⇒ NO VIOLATION.
+- **Context before judgment** — the bot fetches the previous channel
+  messages and sends them as `context` on `POST /moderate`; the AI must read
+  the conversation before judging, per the Forge Protocol.
+- **Full Forge warning format** — every warning carries Member, Rule Number,
+  Rule Name, Exact Message, Reason, Confidence % and Timestamp (moderation
+  log embed + `rule_title` / `offending_message` verdict fields; the title is
+  always resolved from the canonical rule list, never hallucinated). An
+  incomplete verdict (missing rule/title) ⇒ DO NOT WARN.
+- **Warning limit = 3, never Warning 4** — `issueWarning` refuses to create a
+  4th warning: it notifies moderators (approval panel) instead. Per-message
+  dedupe guarantees no message is ever warned twice.
 - The 3-warning ladder and after-max moderator escalation remain enforced by
-  the bot (never the AI) — unchanged.
+  the bot (never the AI).
 
 **Smart warning levels** — every warning is classified
 🟢 Low / 🟡 Medium / 🟠 High / 🔴 Critical (auto-classified from the reason,
