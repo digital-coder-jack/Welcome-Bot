@@ -43,6 +43,8 @@ class ModerationResponse(BaseModel):
 
     violation: bool = Field(..., description="Whether the message violates a rule.")
     rule: Optional[int] = Field(None, ge=1, le=10, description="Violated rule number (1-10), if any.")
+    rule_title: Optional[str] = Field(None, description="Exact Forge Protocol rule title, if violated.")
+    offending_message: Optional[str] = Field(None, description="Exact offending message text, if violated.")
     confidence: float = Field(..., ge=0.0, le=1.0, description="Model confidence 0-1.")
     reason: str = Field(..., description="Short human-readable explanation.")
     action: ModerationAction = Field(..., description="Recommended action for the bot.")

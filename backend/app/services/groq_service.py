@@ -17,7 +17,7 @@ from typing import Optional
 
 from groq import Groq
 
-from app.prompts.moderation_prompt import SYSTEM_PROMPT, build_user_prompt
+from app.prompts.moderation_prompt import SERVER_RULES, SYSTEM_PROMPT, build_user_prompt
 from app.schemas.moderation import ModerationAction, ModerationResponse
 from app.utils.config import settings
 from app.utils.logger import logger
@@ -73,9 +73,9 @@ class GroqModerationService:
 
         raw = completion.choices[0].message.content or "{}"
         data = json.loads(raw)
-        return self._validate(data)
+        return self._validate(data, original_content=content)
 
-    def _validate(self, data: dict) -> ModerationResponse:
+    def _validate(self, data: dict, original_content: str = "") -> ModerationResponse:
         """Coerce a raw dict from the model into a safe ModerationResponse."""
         violation = bool(data.get("violation", False))
 
@@ -100,20 +100,34 @@ class GroqModerationService:
 
         reason = str(data.get("reason") or "").strip() or "No reason provided"
 
+        # Forge Protocol verdict fields: exact rule title + offending message.
+        # The title is always resolved from the canonical rule list (never
+        # trusted from the model) so it can't drift or be hallucinated.
+        rule_title = None
+        offending_message = None
+
         # Enforce internal consistency.
         if not violation:
             rule = None
             action = ModerationAction.NONE
-        # Downgrade low-confidence violations to no action.
+        # Downgrade low-confidence violations to no action (Forge Protocol:
+        # false positives are worse than missing a borderline case).
         elif confidence < settings.min_confidence:
             violation = False
             rule = None
             action = ModerationAction.NONE
             reason = "Below confidence threshold"
 
+        if violation and rule is not None:
+            rule_title = next((t for n, t, _ in SERVER_RULES if n == rule), None)
+            offending = str(data.get("offending_message") or "").strip()
+            offending_message = (offending or original_content or "")[:200] or None
+
         return ModerationResponse(
             violation=violation,
             rule=rule,
+            rule_title=rule_title,
+            offending_message=offending_message,
             confidence=confidence,
             reason=reason[:120],
             action=action,
@@ -130,6 +144,8 @@ class GroqModerationService:
                 return ModerationResponse(
                     violation=True,
                     rule=6,  # No Toxic Behavior
+                    rule_title="No Toxic Behavior",
+                    offending_message=content[:200],
                     confidence=0.8,
                     reason="Detected toxic/insulting language (heuristic).",
                     action=ModerationAction.WARN,

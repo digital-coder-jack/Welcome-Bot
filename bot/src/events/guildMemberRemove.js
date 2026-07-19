@@ -2,10 +2,13 @@
  * events/guildMemberRemove.js
  * ---------------------------------------------------------------------------
  * The Goodbye System. When a member leaves (or is kicked/banned):
- *   1. Send a goodbye message to the configured goodbye channel.
- *   2. Send a Telegram member-left notification via the FastAPI backend.
- *   3. Mark the member as left in the local member store.
- *   4. Log the departure to the moderation log channel.
+ *   1. Classify the departure (voluntary / kick / ban) via the audit log.
+ *   2. VOLUNTARY leaves only: send the Premium Farewell DM (Developer Forge
+ *      branded embed + GIF + buttons). Kicked/banned members NEVER get it.
+ *   3. Send a goodbye message to the configured goodbye channel.
+ *   4. Send a Telegram member-left notification via the FastAPI backend.
+ *   5. Mark the member as left in the local member store.
+ *   6. Log the departure to the moderation log channel.
  * ---------------------------------------------------------------------------
  */
 
@@ -18,6 +21,7 @@ import { sendLog } from '../services/moderationService.js';
 import { notifyMemberLeft } from '../services/telegramClient.js';
 import { markMemberLeft } from '../database/memberStore.js';
 import { recordLeave } from '../database/securityStore.js';
+import { classifyDeparture, sendFarewellDM } from '../managers/farewellManager.js';
 
 export default {
   name: Events.GuildMemberRemove,
@@ -30,6 +34,18 @@ export default {
     if (member.user?.bot) return;
 
     logger.info(`Member left: ${member.user?.tag ?? member.id}.`);
+
+    // 0. Classify the departure ONCE (voluntary / kick / ban / unknown) so
+    //    downstream steps agree on the verdict.
+    const departureType = await classifyDeparture(member.guild, member.id);
+
+    // 0b. Premium Farewell DM — voluntary departures ONLY. Kicked or banned
+    //     members never receive it; closed DMs are silently ignored.
+    try {
+      await sendFarewellDM(member, departureType);
+    } catch (error) {
+      logger.warn(`Farewell DM step failed unexpectedly: ${error.message}`);
+    }
 
     // 1. Goodbye message.
     if (config.channels.goodbye) {

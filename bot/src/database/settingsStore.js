@@ -12,6 +12,7 @@
  *   "<guildId>": {
  *     welcome: { theme, publicEnabled, dmEnabled, animatedEnabled, randomGif,
  *                websiteUrl, customGifs: [] },
+ *     farewell: { dmEnabled, inviteUrl, websiteUrl, bannerUrl },
  *     security: { alertChannelId, ownerRoleId, moderatorRoleIds: [],
  *                 warnThreshold, timeoutMinutes, language }
  *   }
@@ -34,6 +35,12 @@ export const DEFAULT_SETTINGS = Object.freeze({
     websiteUrl: '', // optional 🌐 Website button target
     customGifs: [], // admin-supplied GIF URLs (override theme GIFs)
   }),
+  farewell: Object.freeze({
+    dmEnabled: true, // send the premium farewell DM on VOLUNTARY leaves
+    inviteUrl: '', // 🌐 Rejoin button target (permanent invite link)
+    websiteUrl: '', // 📚 Community Website button target (optional)
+    bannerUrl: '', // custom large farewell banner (GIF/image URL)
+  }),
   security: Object.freeze({
     alertChannelId: '', // dedicated moderation-alert channel (falls back to log channel)
     ownerRoleId: '', // role treated as "owner" besides the actual guild owner
@@ -48,6 +55,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
 function withDefaults(stored = {}) {
   return {
     welcome: { ...DEFAULT_SETTINGS.welcome, ...(stored.welcome ?? {}) },
+    farewell: { ...DEFAULT_SETTINGS.farewell, ...(stored.farewell ?? {}) },
     security: { ...DEFAULT_SETTINGS.security, ...(stored.security ?? {}) },
   };
 }
@@ -65,7 +73,7 @@ export async function getSettings(guildId) {
 /**
  * Update one settings section for a guild.
  * @param {string} guildId
- * @param {'welcome'|'security'} section
+ * @param {'welcome'|'farewell'|'security'} section
  * @param {object} patch  Partial settings to merge in.
  * @returns {Promise<object>} the new effective settings for that section.
  */

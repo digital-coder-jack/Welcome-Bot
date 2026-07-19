@@ -23,6 +23,8 @@ import { logger } from '../utils/logger.js';
  * @typedef {Object} ModerationResult
  * @property {boolean} violation
  * @property {number|null} rule
+ * @property {string|null} ruleTitle          exact Forge Protocol rule title
+ * @property {string|null} offendingMessage   exact offending message text
  * @property {number} confidence
  * @property {string} reason
  * @property {'none'|'delete'|'warn'|'kick'} action
@@ -32,6 +34,8 @@ import { logger } from '../utils/logger.js';
 const SAFE_RESULT = Object.freeze({
   violation: false,
   rule: null,
+  ruleTitle: null,
+  offendingMessage: null,
   confidence: 0,
   reason: 'AI analysis unavailable',
   action: 'none',
@@ -75,6 +79,11 @@ function normalise(data) {
   return {
     violation: Boolean(data.violation),
     rule,
+    ruleTitle: typeof data.rule_title === 'string' && data.rule_title ? data.rule_title : null,
+    offendingMessage:
+      typeof data.offending_message === 'string' && data.offending_message
+        ? data.offending_message.slice(0, 200)
+        : null,
     confidence,
     reason: typeof data.reason === 'string' && data.reason ? data.reason : 'No reason provided',
     action,

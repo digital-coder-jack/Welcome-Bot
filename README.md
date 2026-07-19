@@ -79,6 +79,30 @@ Server Invite Used.
 Plus: raid detection (8+ joins/60s) and new-account screening (<7 days) fire
 `/telegram/security-alert` automatically.
 
+## 👋 Premium Farewell DM (on voluntary leave) 🆕
+
+When a member leaves **voluntarily**, they receive a premium, Developer Forge
+branded farewell DM (`bot/src/managers/farewellManager.js`):
+
+- **Kick/ban aware** — the guild audit log is checked first; kicked or banned
+  members **never** receive the farewell.
+- **Structure** — animated farewell GIF on top (programming / tech / waving
+  goodbye aesthetic), then a branded embed with unicode dividers:
+  personalised greeting → 🌸 thank-you (every member contributes something
+  valuable) → 💻 motivational coding encouragement (*keep building, keep
+  learning, keep creating*) → 🏡 "always welcome back" → 💙 Take care ·
+  🚀 Happy Coding · 👋 See you again — Developer Forge Team.
+- **Embed design** — title `👋 See You Later!`, official brand colour
+  (blurple `0x5865F2`), server logo thumbnail, large farewell banner,
+  footer *“Developer Forge • Different people, different stories — everyone
+  deserves respect.”* + timestamp.
+- **Buttons** (when configured) — 🌐 Rejoin Developer Forge · 💬 Contact
+  Staff · 📚 Community Website.
+- **Never** mentions punishments, warnings, moderation or rule violations;
+  never guilt-trips. Closed DMs are silently ignored.
+- Configured at runtime with **`/farewellconfig`** (view / toggle / links /
+  banner / **test** — DM yourself a live preview).
+
 ### 🎨 Welcome Themes (8)
 
 `Cyber Blue` · `Discord Purple` · `Galaxy` · `Dark Neon` · `Developer` · `AI`
@@ -236,6 +260,23 @@ join-scan risk score):
 
 ## 🛡️ Security & Moderation Workflow
 
+**The Forge Protocol (AI moderation prompt v3)** 🆕 — the backend prompt
+(`backend/app/prompts/moderation_prompt.py`) now enforces the official Forge
+Protocol contract:
+
+- Warns **only on CLEAR violations** — greetings, jokes, hobby talk (anime,
+  gaming, music, movies), compliments, questions and emojis are on a hard
+  never-warn list.
+- **Never infers intent**; ambiguity ⇒ `NO VIOLATION`. False positives are
+  explicitly worse than missed borderline cases (violations under 0.75
+  confidence are downgraded to no violation).
+- Every violation verdict carries the **exact rule number + title** (resolved
+  from the canonical rule list, never hallucinated), the **exact offending
+  message** and a brief explanation — new `rule_title` / `offending_message`
+  fields in the `/moderate` response, passed through `bot/src/services/aiClient.js`.
+- The 3-warning ladder and after-max moderator escalation remain enforced by
+  the bot (never the AI) — unchanged.
+
 **Smart warning levels** — every warning is classified
 🟢 Low / 🟡 Medium / 🟠 High / 🔴 Critical (auto-classified from the reason,
 or set explicitly via `/warn severity:`). Critical never triggers automatic
@@ -278,6 +319,11 @@ history, **risk score (0–100)** and recent violations, with buttons:
 | `/welcomeconfig toggles public/dm/animated/random_gif` | Enable/disable features |
 | `/welcomeconfig website <url\|clear>` | Set the 🌐 Website button |
 | `/welcomeconfig gifs add/clear` | Manage the custom GIF collection |
+| `/farewellconfig view` | 🆕 Show farewell settings |
+| `/farewellconfig toggle <enabled>` | 🆕 Enable/disable the farewell DM |
+| `/farewellconfig links invite/website` | 🆕 Set 🌐 Rejoin & 📚 Website buttons |
+| `/farewellconfig banner <url\|clear>` | 🆕 Custom farewell banner image/GIF |
+| `/farewellconfig test` | 🆕 DM yourself a live farewell preview |
 | `/securityconfig view` | Show security settings |
 | `/securityconfig alertchannel <#channel>` | Dedicated moderation-alert channel |
 | `/securityconfig ownerrole <role>` | Owner-override role |
