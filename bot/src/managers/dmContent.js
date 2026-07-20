@@ -8,8 +8,9 @@
  *
  * Exports:
  *   - BRAND            Visual identity constants (accent colour, logo,
- *                      footer). Logo is overridable via env
- *                      (FORGE_LOGO_URL) without a deploy.
+ *                      footer). Delegates to the official Developer's
+ *                      Forge identity in managers/brandingManager.js
+ *                      (env-overridable via FORGE_LOGO_URL).
  *   - WELCOME_QUOTES   10 curated inspirational quotes (programming,
  *                      learning, creativity, perseverance).
  *   - pickQuote()      Random quote selector — one per new member.
@@ -21,23 +22,17 @@
  * ---------------------------------------------------------------------------
  */
 
-import { config } from '../config.js';
+import { FORGE_BRAND } from './brandingManager.js';
 
 /**
  * Visual identity for the premium welcome DM.
+ *
+ * Re-exported from the single source of truth (brandingManager.js) so the
+ * long-standing `BRAND` import contract keeps working everywhere.
  * `FORGE_LOGO_URL` env var (via config.branding) overrides the default so
  * server owners can rebrand without touching code.
  */
-export const BRAND = Object.freeze({
-  /** Warm forge amber — premium, dark-mode friendly accent. */
-  accent: 0xd97a34,
-  /** Developer's Forge logo (embed thumbnail). */
-  logoUrl:
-    config.branding.forgeLogoUrl ||
-    'https://raw.githubusercontent.com/digital-coder-jack/Welcome-Bot/main/bot/assets/branding/forge-guardian-logo.png',
-  /** Branded footer line. */
-  footer: "Developer's Forge • Learn • Build • Grow",
-});
+export const BRAND = FORGE_BRAND;
 
 /** Thin, minimal divider — renders cleanly on desktop and mobile widths. */
 const DIVIDER = '━━━━━━━━━━━━━━━━━━━━━━━━━━';

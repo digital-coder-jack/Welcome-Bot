@@ -3,12 +3,16 @@
  * ---------------------------------------------------------------------------
  * The Welcome System. When a new member joins:
  *
- *   1. Send a welcome embed to the configured welcome channel.
- *   2. Send an animated welcome DM (plus the server rules).
- *   3. Assign the "Forge Member" role.
- *   4. Auto-send the Developer Intro message to the dev-intro channel.
- *   5. Send the full Telegram join notification via the FastAPI backend.
- *   6. Save the member information to the local member store.
+ *   1. Send the member introduction (public welcome + welcome DM + dev-intro)
+ *      via managers/introductionManager.js — the single source of truth.
+ *      • Membership Screening (Gateway) ENABLED  → the introduction is
+ *        DEFERRED: nothing is sent here; it fires exactly once from
+ *        guildMemberUpdate after the member passes the Gateway.
+ *      • Membership Screening DISABLED → the introduction is sent here,
+ *        immediately, exactly once.
+ *   2. Assign the "Forge Member" role.
+ *   3. Send the full Telegram join notification via the FastAPI backend.
+ *   4. Save the member information to the local member store.
  *
  * Additionally, every join is fed to the security service (raid detection &
  * new-account screening).
@@ -21,9 +25,11 @@
 import { Events } from 'discord.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
-import { devIntroEmbed, COLORS } from '../utils/embeds.js';
-import { sendPublicWelcome } from '../managers/welcomeManager.js';
-import { sendWelcomeDM } from '../managers/dmManager.js';
+import { COLORS } from '../utils/embeds.js';
+import {
+  registerPendingIntroduction,
+  sendMemberIntroduction,
+} from '../managers/introductionManager.js';
 import { accountAge, formatUTC } from '../utils/time.js';
 import { sendLog } from '../services/moderationService.js';
 import { notifyMemberJoined } from '../services/telegramClient.js';
@@ -128,24 +134,21 @@ export default {
     }
 
     if (!isBot && !welcomesPaused) {
-      // --- Step 1: Premium public welcome (themed, cinematic animation,
-      //             random GIFs, buttons, stickers) via welcomeManager ---
-      try {
-        await sendPublicWelcome(member);
-      } catch (error) {
-        logger.warn(`Failed to send public welcome: ${error.message}`);
+      // --- Step 1: Member introduction (public welcome + DM + dev-intro) ---
+      // Membership Screening (Gateway) enabled → `member.pending` is true:
+      // NEVER send the introduction from guildMemberAdd. Register the member
+      // so guildMemberUpdate sends it exactly once after the Gateway is
+      // passed. Screening disabled → send it here, exactly once.
+      if (member.pending) {
+        registerPendingIntroduction(member);
+        dmStatus = 'Deferred (membership screening)';
+      } else {
+        const intro = await sendMemberIntroduction(member, { source: 'join' });
+        dmStatus = intro.dmStatus;
+        devIntroSent = intro.devIntroSent;
       }
 
-      // --- Step 2: Premium welcome DM (multi-embed journey + buttons +
-      //             server rules) via dmManager ---
-      try {
-        dmStatus = await sendWelcomeDM(member);
-      } catch (error) {
-        dmStatus = 'Failed (DMs closed)';
-        logger.warn(`Failed to send welcome DM: ${error.message}`);
-      }
-
-      // --- Step 3: Assign the Forge Member role ---
+      // --- Step 2: Assign the Forge Member role ---
       if (config.roles.forgeMember) {
         try {
           const role = await member.guild.roles.fetch(config.roles.forgeMember);
@@ -160,22 +163,9 @@ export default {
           logger.warn(`Failed to assign Forge Member role: ${error.message}`);
         }
       }
-
-      // --- Step 4: Auto-send the Developer Intro message ---
-      if (config.channels.devIntro) {
-        try {
-          const channel = await member.guild.channels.fetch(config.channels.devIntro);
-          if (channel?.isTextBased()) {
-            await channel.send({ content: `${member}`, embeds: [devIntroEmbed(member)] });
-            devIntroSent = true;
-          }
-        } catch (error) {
-          logger.warn(`Failed to send dev-intro message: ${error.message}`);
-        }
-      }
     }
 
-    // --- Step 5: Telegram join notification via the backend ---
+    // --- Step 3: Telegram join notification via the backend ---
     try {
       telegramSent = await notifyMemberJoined({
         username: member.user.username,
@@ -198,7 +188,7 @@ export default {
       logger.warn(`Telegram join notification failed: ${error.message}`);
     }
 
-    // --- Step 6: Save member information ---
+    // --- Step 4: Save member information ---
     try {
       databaseSaved = Boolean(await saveMember({
         guildId: member.guild.id,

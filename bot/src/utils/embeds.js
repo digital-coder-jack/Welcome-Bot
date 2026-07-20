@@ -10,6 +10,7 @@
 
 import { EmbedBuilder } from 'discord.js';
 import { formatRulesList, ruleLabel } from './rules.js';
+import { brandIcon, FORGE_BRAND } from '../managers/brandingManager.js';
 
 /** Brand colours used across embeds. */
 export const COLORS = Object.freeze({
@@ -82,6 +83,10 @@ export function welcomeDMEmbed(member) {
 export function devIntroEmbed(member) {
   return new EmbedBuilder()
     .setColor(COLORS.intro)
+    .setAuthor({
+      name: FORGE_BRAND.name,
+      iconURL: brandIcon(member.guild, 128),
+    })
     .setTitle('👨‍💻 New Developer Joined!')
     .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
     .setDescription(
@@ -92,7 +97,10 @@ export function devIntroEmbed(member) {
         `• 🎯 What are you working on right now?\n\n` +
         `Drop your intro in **#dev-intro** — we'd love to meet you! 🤝`
     )
-    .setFooter({ text: `Member #${member.guild.memberCount}` })
+    .setFooter({
+      text: `Member #${member.guild.memberCount}`,
+      iconURL: brandIcon(member.guild, 64),
+    })
     .setTimestamp();
 }
 

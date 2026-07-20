@@ -1,7 +1,14 @@
 /**
  * events/guildMemberUpdate.js
  * ---------------------------------------------------------------------------
- * Phase 8 — Role & permission abuse watcher (Forge Guardian v2.0).
+ * 1. Membership Screening (Gateway) introduction dispatch:
+ *    When a member passes the Gateway (pending: true → false), the member
+ *    introduction (public welcome + welcome DM + dev-intro) is sent exactly
+ *    once via managers/introductionManager.js. When Screening is disabled
+ *    members never arrive pending, so this path simply never fires —
+ *    guildMemberAdd handles them. There is never a duplicate introduction.
+ *
+ * 2. Phase 8 — Role & permission abuse watcher (Forge Guardian v2.0).
  *
  * On every member update, checks for:
  *   - Role abuse: many roles granted to one member in a short window.
@@ -24,6 +31,10 @@ import { logSecurityEvent } from '../security/securityLogger.js';
 import { reportSecurityEvent } from '../services/securityService.js';
 import { updateProfile } from '../database/profileStore.js';
 import { config } from '../config.js';
+import {
+  shouldSendGatewayIntroduction,
+  sendMemberIntroduction,
+} from '../managers/introductionManager.js';
 
 export default {
   name: Events.GuildMemberUpdate,
@@ -34,6 +45,29 @@ export default {
    * @param {import('discord.js').GuildMember} newMember
    */
   async execute(oldMember, newMember) {
+    // --- Membership Screening: send the deferred introduction exactly once
+    //     after the member passes the Gateway (best-effort, never throws) ---
+    try {
+      if (shouldSendGatewayIntroduction(oldMember, newMember)) {
+        const intro = await sendMemberIntroduction(newMember, { source: 'gateway' });
+        if (intro.sent) {
+          logger.info(
+            `Gateway passed — introduction sent for ${newMember.user.tag} (${newMember.id}).`
+          );
+          // Keep the permanent profile's onboarding fields current.
+          await updateProfile(newMember.guild.id, newMember.id, {
+            server: {
+              welcomeDmStatus: intro.dmStatus,
+              devIntroStatus: intro.devIntroSent ? 'Sent' : 'Not sent',
+              verificationStatus: 'Passed gateway',
+            },
+          }).catch(() => {});
+        }
+      }
+    } catch (error) {
+      logger.warn(`Gateway introduction dispatch failed: ${error.message}`);
+    }
+
     // --- Phase 7: keep profile roles/nickname in sync (best-effort) ---
     try {
       const roles = newMember.roles.cache

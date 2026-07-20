@@ -24,6 +24,7 @@ import { logger } from '../utils/logger.js';
 import { getSettings } from '../database/settingsStore.js';
 import { getTheme } from './themeManager.js';
 import { pickWelcomeGif, pickEmojiBurst, pickGuildSticker, LOADING_FRAMES } from './gifManager.js';
+import { brandIcon } from './brandingManager.js';
 
 /** Delay between animation frames (ms). Keep >= 1500 to respect rate limits. */
 const FRAME_DELAY_MS = 2200;
@@ -102,7 +103,7 @@ export function premiumWelcomeEmbed(member, theme, gifUrl) {
     .setColor(theme.accent)
     .setAuthor({
       name: `${guild.name} • New Member`,
-      iconURL: guild.iconURL({ size: 128 }) ?? undefined,
+      iconURL: brandIcon(guild, 128),
     })
     .setTitle(`${e.wave} Welcome, ${member.displayName}!`)
     .setDescription(
@@ -133,7 +134,7 @@ export function premiumWelcomeEmbed(member, theme, gifUrl) {
     )
     .setFooter({
       text: `${theme.name} theme • ${guild.name} • ID: ${member.id}`,
-      iconURL: guild.iconURL({ size: 64 }) ?? undefined,
+      iconURL: brandIcon(guild, 64),
     })
     .setTimestamp();
 
@@ -163,7 +164,7 @@ function animationFrame(member, theme, gifUrl, step, headline, body) {
     .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
     .setFooter({
       text: `${member.guild.name} • preparing welcome...`,
-      iconURL: member.guild.iconURL({ size: 64 }) ?? undefined,
+      iconURL: brandIcon(member.guild, 64),
     });
 
   if (gifUrl) embed.setImage(gifUrl);
