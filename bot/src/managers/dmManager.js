@@ -1,19 +1,26 @@
 /**
  * managers/dmManager.js
  * ---------------------------------------------------------------------------
- * The Premium Welcome DM experience.
+ * The Premium Welcome DM experience — minimal, elegant, dark-mode friendly.
  *
- * Instead of a single plain embed, new members receive a multi-embed,
- * GIF-separated "journey":
+ * Redesigned onboarding modelled on large Discord communities:
  *
- *   Embed 1: Hero — big animated GIF, personalised greeting, server logo.
- *   Embed 2: Next steps — rules / verification / intro / explore / perks,
- *            separated from the hero by its own themed GIF.
- *   Embed 3: The server rules (kept from the original bot — backward
- *            compatible with the existing rules util).
+ *   Embed 1: Banner — full-width cyber/forge-themed welcome banner shown
+ *            at the very top of the DM (image-only embed, the technique
+ *            large communities use to place a banner above the content).
+ *   Embed 2: Premium welcome — Forge Guardian logo thumbnail, warm forge
+ *            accent colour, generous spacing, one randomly-rotated
+ *            inspirational quote (10 variants, same layout — see
+ *            dmContent.js), timestamp + branded footer.
+ *   Embed 3: The server rules (unchanged — reuses the existing rules util
+ *            for full backward compatibility).
  *
- * A button row (Rules / Support / Community / Website) is attached to the
- * message. Every step is best-effort: closed DMs never break the join flow.
+ * A single Link-button row (Rules / Introduce Yourself / Choose Roles /
+ * Community / Support) is attached. Link buttons need zero interaction
+ * state and never expire, so they are ideal inside DMs.
+ *
+ * Every step is best-effort: closed DMs never break the join flow — the
+ * function resolves with a status string and never throws.
  * ---------------------------------------------------------------------------
  */
 
@@ -21,21 +28,22 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'disc
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { getSettings } from '../database/settingsStore.js';
-import { getTheme } from './themeManager.js';
-import { pickWelcomeGif, pickEmojiBurst } from './gifManager.js';
 import { rulesDMEmbed } from '../utils/embeds.js';
+import { BRAND, buildWelcomeBody } from './dmContent.js';
 
 /**
  * Button row for the welcome DM. All buttons are Link buttons so they work
  * inside DMs (interaction components with customIds also work, but links
  * need zero state and never expire).
  *
+ * Discord caps a row at 5 buttons — exactly the 5 we want:
+ * Rules / Introduce Yourself / Choose Roles / Community / Support.
+ *
  * @param {import('discord.js').Guild} guild
- * @param {object} theme
  * @param {object} welcomeSettings
- * @returns {ActionRowBuilder|null}
+ * @returns {ActionRowBuilder|null} null when no channel is configured.
  */
-function buildDMButtons(guild, theme, welcomeSettings) {
+function buildDMButtons(guild, welcomeSettings) {
   const row = new ActionRowBuilder();
   const channelLink = (channelId) => `https://discord.com/channels/${guild.id}/${channelId}`;
 
@@ -43,9 +51,36 @@ function buildDMButtons(guild, theme, welcomeSettings) {
     row.addComponents(
       new ButtonBuilder()
         .setLabel('Rules')
-        .setEmoji(theme.buttons.rules)
+        .setEmoji('📖')
         .setStyle(ButtonStyle.Link)
         .setURL(channelLink(config.channels.rules || config.channels.welcome))
+    );
+  }
+  if (config.channels.devIntro) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setLabel('Introduce Yourself')
+        .setEmoji('👋')
+        .setStyle(ButtonStyle.Link)
+        .setURL(channelLink(config.channels.devIntro))
+    );
+  }
+  if (config.channels.rolesPicker) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setLabel('Choose Roles')
+        .setEmoji('🎭')
+        .setStyle(ButtonStyle.Link)
+        .setURL(channelLink(config.channels.rolesPicker))
+    );
+  }
+  if (config.channels.community || config.channels.welcome) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setLabel('Community')
+        .setEmoji('💬')
+        .setStyle(ButtonStyle.Link)
+        .setURL(channelLink(config.channels.community || config.channels.welcome))
     );
   }
   if (config.channels.support || config.channels.log) {
@@ -57,92 +92,67 @@ function buildDMButtons(guild, theme, welcomeSettings) {
         .setURL(channelLink(config.channels.support || config.channels.log))
     );
   }
-  if (config.channels.community || config.channels.devIntro || config.channels.welcome) {
-    row.addComponents(
-      new ButtonBuilder()
-        .setLabel('Community')
-        .setEmoji(theme.buttons.community)
-        .setStyle(ButtonStyle.Link)
-        .setURL(channelLink(config.channels.community || config.channels.devIntro || config.channels.welcome))
-    );
-  }
-  if (welcomeSettings.websiteUrl && /^https?:\/\//i.test(welcomeSettings.websiteUrl)) {
-    row.addComponents(
-      new ButtonBuilder()
-        .setLabel('Website')
-        .setEmoji(theme.buttons.website)
-        .setStyle(ButtonStyle.Link)
-        .setURL(welcomeSettings.websiteUrl)
-    );
-  }
 
   return row.components.length > 0 ? row : null;
 }
 
 /**
- * Hero embed — the first thing the member sees in their DM.
+ * Image-only banner embed — placed FIRST so the cyber/forge welcome banner
+ * renders at the very top of the DM (Discord draws setImage below embed
+ * text, so a dedicated leading embed is the clean way to get a top banner).
+ *
+ * @returns {EmbedBuilder}
  */
-function heroEmbed(member, theme, gifUrl) {
-  const e = theme.emojis;
-  const guild = member.guild;
+export function welcomeBannerEmbed() {
+  return new EmbedBuilder().setColor(BRAND.accent).setImage(BRAND.bannerUrl);
+}
 
-  const embed = new EmbedBuilder()
-    .setColor(theme.color)
+/**
+ * Build the premium minimal welcome embed.
+ *
+ * Design decisions (see task spec):
+ *   - Warm forge amber accent (BRAND.accent) — elegant in dark & light mode.
+ *   - Forge Guardian logo as the thumbnail.
+ *   - Timestamp + "Developer's Forge • Learn • Build • Grow" footer.
+ *   - Body content generated by dmContent.buildWelcomeBody with dynamic
+ *     variables and one of 10 rotating quotes.
+ *
+ * @param {import('discord.js').GuildMember} member
+ * @returns {EmbedBuilder}
+ */
+export function premiumWelcomeDMEmbed(member) {
+  const guild = member.guild;
+  const joinedTs = Math.floor((member.joinedTimestamp ?? Date.now()) / 1000);
+
+  const body = buildWelcomeBody({
+    username: member.user.username,
+    displayName: member.displayName ?? member.user.globalName ?? member.user.username,
+    memberCount: guild.memberCount,
+    joinDate: `<t:${joinedTs}:D>`,
+    serverName: guild.name,
+  });
+
+  return new EmbedBuilder()
+    .setColor(BRAND.accent)
     .setAuthor({
       name: guild.name,
       iconURL: guild.iconURL({ size: 128 }) ?? undefined,
     })
-    .setTitle(`${e.wave} Welcome to ${guild.name}`)
-    .setDescription(
-      [
-        theme.divider,
-        '',
-        `Hello **${member.user.displayName ?? member.user.username}**!`,
-        '',
-        `${e.heart} We're happy you joined our community.`,
-        '',
-        pickEmojiBurst(),
-        '',
-        theme.divider,
-      ].join('\n')
-    )
-    .setThumbnail(guild.iconURL({ size: 256 }) ?? member.user.displayAvatarURL({ size: 256 }))
-    .setFooter({ text: `${theme.name} theme • You are member #${guild.memberCount}` })
-    .setTimestamp();
-
-  if (gifUrl) embed.setImage(gifUrl);
-  return embed;
-}
-
-/**
- * "What to do next" embed with its own separator GIF.
- */
-function nextStepsEmbed(member, theme, gifUrl) {
-  const e = theme.emojis;
-
-  const embed = new EmbedBuilder()
-    .setColor(theme.accent)
-    .setTitle(`${e.spark} Here's what to do next`)
-    .setDescription(
-      [
-        `${e.book} **Read the Rules** — know the community standards.`,
-        `${e.shield} **Complete Verification** — unlock all channels.`,
-        `${e.chat} **Introduce Yourself** — say hi in the intro channel.`,
-        `${e.rocket} **Explore our channels** — find your favourite spots.`,
-        `🎁 **Unlock community perks** — roles, events and more.`,
-      ].join('\n\n')
-    )
+    .setDescription(body)
+    .setThumbnail(BRAND.logoUrl)
     .setFooter({
-      text: member.guild.name,
-      iconURL: member.guild.iconURL({ size: 64 }) ?? undefined,
-    });
-
-  if (gifUrl) embed.setImage(gifUrl);
-  return embed;
+      text: BRAND.footer,
+      iconURL: guild.iconURL({ size: 64 }) ?? undefined,
+    })
+    .setTimestamp();
 }
 
 /**
  * Send the full premium welcome DM to a new member. Never throws.
+ *
+ * Contract preserved from the previous implementation — callers
+ * (events/guildMemberAdd.js) rely on the exact status strings for the
+ * Telegram notification, the member store and the security profile.
  *
  * @param {import('discord.js').GuildMember} member
  * @returns {Promise<'Delivered'|'Disabled'|'Failed (DMs closed)'>} status.
@@ -152,26 +162,21 @@ export async function sendWelcomeDM(member) {
   const wc = settings.welcome;
   if (!wc.dmEnabled) return 'Disabled';
 
-  const theme = getTheme(wc.theme);
-
-  // Use two *different* GIFs for the hero and the section separator.
-  const heroGif = pickWelcomeGif(member.guild.id, wc);
-  const pool = getTheme(wc.theme).gifs;
-  const sectionGif = pool.find((g) => g !== heroGif) ?? heroGif;
-
-  const buttons = buildDMButtons(member.guild, theme, wc);
+  const buttons = buildDMButtons(member.guild, wc);
 
   try {
     await member.send({
       embeds: [
-        heroEmbed(member, theme, heroGif),
-        nextStepsEmbed(member, theme, sectionGif),
+        welcomeBannerEmbed(),
+        premiumWelcomeDMEmbed(member),
         rulesDMEmbed(member.guild.name),
       ],
       ...(buttons ? { components: [buttons] } : {}),
     });
     return 'Delivered';
   } catch (error) {
+    // Closed DMs (error 50007) or any other delivery failure must never
+    // interrupt the join flow — log and report gracefully.
     logger.warn(`Failed to send welcome DM to ${member.user.tag}: ${error.message}`);
     return 'Failed (DMs closed)';
   }

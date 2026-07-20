@@ -68,9 +68,14 @@ Server Invite Used.
    server icon, member count, account age, join timestamp, emoji bursts,
    guild stickers (when available) and clickable buttons
    (📖 Rules · 💬 Introduce Yourself · 🎮 Community · 🌐 Website).
-2. **Premium welcome DM** — a multi-embed journey: hero embed with animated
-   GIF + personalised greeting, a "what to do next" section with its own GIF,
-   the server rules, and a button row (📖 Rules · 🛟 Support · 🎮 Community · 🌐 Website).
+2. **Premium welcome DM** — a minimal, elegant onboarding experience:
+   a full-width cyber/forge welcome banner on top, Forge Guardian logo
+   thumbnail, warm forge-amber accent, generous spacing, dynamic variables
+   (`{username}` `{displayName}` `{memberCount}` `{joinDate}` `{serverName}`),
+   one of **10 rotating inspirational quotes**, the server rules, a timestamp,
+   the branded footer “Developer's Forge • Learn • Build • Grow” and a button
+   row (📖 Rules · 👋 Introduce Yourself · 🎭 Choose Roles · 💬 Community · 🛟 Support).
+   Closed DMs are handled gracefully and never affect the join flow.
 3. **Forge Member** role auto-assigned
 4. Developer Intro message auto-sent to the dev-intro channel
 5. Telegram join notification via the backend
@@ -356,7 +361,8 @@ welcome-bot/
 │       ├── handlers/             # dynamic event & command loaders
 │       ├── managers/             # ⭐ NEW modular managers:
 │       │   ├── welcomeManager.js     #   premium public welcome + cinematic animation + buttons
-│       │   ├── dmManager.js          #   premium multi-embed welcome DM
+│       │   ├── dmManager.js          #   premium minimal welcome DM (banner + quote rotation)
+│       │   ├── dmContent.js          #   DM content library: brand, 10 quotes, template engine
 │       │   ├── themeManager.js       #   8 welcome themes (colors, GIFs, emojis)
 │       │   ├── gifManager.js         #   animated asset manager, random no-repeat GIFs, stickers
 │       │   ├── warningManager.js     #   smart severity levels + risk scoring

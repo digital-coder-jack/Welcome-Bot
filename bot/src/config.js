@@ -90,6 +90,7 @@ export const config = Object.freeze({
     rules: envStr('RULES_CHANNEL_ID'), // 📖 Rules button target
     community: envStr('COMMUNITY_CHANNEL_ID'), // 🎮 Community button target
     support: envStr('SUPPORT_CHANNEL_ID'), // 🛟 Support button target (DM)
+    rolesPicker: envStr('ROLES_CHANNEL_ID'), // 🎭 Choose Roles button target (DM)
     modAlert: envStr('MOD_ALERT_CHANNEL_ID'), // 🚨 default moderation-alert channel
     // --- Dedicated security channels (v2.0 — every one is OPTIONAL) ---
     securityLog: envStr('SECURITY_LOG_CHANNEL_ID'), // 📜 mirrored security event log
@@ -98,6 +99,13 @@ export const config = Object.freeze({
   }),
   roles: Object.freeze({
     forgeMember: envStr('FORGE_MEMBER_ROLE_ID'),
+  }),
+
+  // --- Premium Welcome DM branding (optional overrides, curated defaults
+  // --- live in managers/dmContent.js) ---
+  branding: Object.freeze({
+    welcomeBannerUrl: envStr('WELCOME_BANNER_URL'),
+    forgeLogoUrl: envStr('FORGE_LOGO_URL'),
   }),
 
   // --- AI backend (FastAPI + Groq) ---
