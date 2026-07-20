@@ -36,6 +36,35 @@ import { sendSecurityReport } from '../security/securityReport.js';
 import { isLockdownActive } from '../security/lockdownManager.js';
 import { syncProfileFromMember } from '../database/profileStore.js';
 
+/**
+ * Join dedupe guard — Discord's gateway can re-emit GuildMemberAdd for the
+ * same member (session resumes / reconnects), which used to double-send the
+ * welcome + dev-intro messages. Each processed join is remembered for
+ * DEDUPE_TTL_MS; duplicates inside that window are ignored entirely.
+ * @type {Map<string, number>} key = `${guildId}:${userId}`, value = expiry ts.
+ */
+const recentJoins = new Map();
+const DEDUPE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * Returns true when this member's join was already processed recently.
+ * Also opportunistically evicts expired entries so the map never grows.
+ *
+ * @param {string} guildId
+ * @param {string} userId
+ * @returns {boolean}
+ */
+function isDuplicateJoin(guildId, userId) {
+  const now = Date.now();
+  for (const [key, expiry] of recentJoins) {
+    if (expiry <= now) recentJoins.delete(key);
+  }
+  const key = `${guildId}:${userId}`;
+  if (recentJoins.has(key)) return true;
+  recentJoins.set(key, now + DEDUPE_TTL_MS);
+  return false;
+}
+
 export default {
   name: Events.GuildMemberAdd,
   once: false,
@@ -45,6 +74,14 @@ export default {
    */
   async execute(member) {
     const isBot = member.user.bot;
+
+    // Ignore duplicate join events (gateway re-emits) — guarantees exactly
+    // ONE welcome, ONE DM and ONE dev-intro message per member per join.
+    if (isDuplicateJoin(member.guild.id, member.id)) {
+      logger.warn(`Duplicate GuildMemberAdd ignored for ${member.user.tag} (${member.id}).`);
+      return;
+    }
+
     logger.info(`Member joined: ${member.user.tag} (${member.id})${isBot ? ' [BOT]' : ''}.`);
 
     // Resolve which invite was used (works for bots and humans alike).

@@ -69,8 +69,9 @@ Server Invite Used.
    guild stickers (when available) and clickable buttons
    (📖 Rules · 💬 Introduce Yourself · 🎮 Community · 🌐 Website).
 2. **Premium welcome DM** — a minimal, elegant onboarding experience:
-   a full-width cyber/forge welcome banner on top, Forge Guardian logo
-   thumbnail, warm forge-amber accent, generous spacing, dynamic variables
+   a centred monospace “DEVELOPER'S FORGE” header plaque, the official
+   Developer's Forge logo thumbnail, warm forge-amber accent, generous
+   spacing, dynamic variables
    (`{username}` `{displayName}` `{memberCount}` `{joinDate}` `{serverName}`),
    one of **10 rotating inspirational quotes**, the server rules, a timestamp,
    the branded footer “Developer's Forge • Learn • Build • Grow” and a button
@@ -361,7 +362,7 @@ welcome-bot/
 │       ├── handlers/             # dynamic event & command loaders
 │       ├── managers/             # ⭐ NEW modular managers:
 │       │   ├── welcomeManager.js     #   premium public welcome + cinematic animation + buttons
-│       │   ├── dmManager.js          #   premium minimal welcome DM (banner + quote rotation)
+│       │   ├── dmManager.js          #   premium minimal welcome DM (centred plaque + quote rotation)
 │       │   ├── dmContent.js          #   DM content library: brand, 10 quotes, template engine
 │       │   ├── themeManager.js       #   8 welcome themes (colors, GIFs, emojis)
 │       │   ├── gifManager.js         #   animated asset manager, random no-repeat GIFs, stickers

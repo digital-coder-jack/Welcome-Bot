@@ -7,9 +7,9 @@
  * trivially unit-testable and keeps dmManager.js focused on delivery.
  *
  * Exports:
- *   - BRAND            Visual identity constants (accent colour, banner,
- *                      logo, footer). Banner/logo are overridable via env
- *                      (WELCOME_BANNER_URL / FORGE_LOGO_URL) without a deploy.
+ *   - BRAND            Visual identity constants (accent colour, logo,
+ *                      footer). Logo is overridable via env
+ *                      (FORGE_LOGO_URL) without a deploy.
  *   - WELCOME_QUOTES   10 curated inspirational quotes (programming,
  *                      learning, creativity, perseverance).
  *   - pickQuote()      Random quote selector — one per new member.
@@ -25,17 +25,13 @@ import { config } from '../config.js';
 
 /**
  * Visual identity for the premium welcome DM.
- * `WELCOME_BANNER_URL` / `FORGE_LOGO_URL` env vars (via config.branding)
- * override the defaults so server owners can rebrand without touching code.
+ * `FORGE_LOGO_URL` env var (via config.branding) overrides the default so
+ * server owners can rebrand without touching code.
  */
 export const BRAND = Object.freeze({
   /** Warm forge amber — premium, dark-mode friendly accent. */
   accent: 0xd97a34,
-  /** Cyber/forge welcome banner (top of the DM). */
-  bannerUrl:
-    config.branding.welcomeBannerUrl ||
-    'https://raw.githubusercontent.com/digital-coder-jack/Welcome-Bot/main/bot/assets/branding/welcome-banner.jpg',
-  /** Forge Guardian logo (embed thumbnail). */
+  /** Developer's Forge logo (embed thumbnail). */
   logoUrl:
     config.branding.forgeLogoUrl ||
     'https://raw.githubusercontent.com/digital-coder-jack/Welcome-Bot/main/bot/assets/branding/forge-guardian-logo.png',
@@ -45,6 +41,33 @@ export const BRAND = Object.freeze({
 
 /** Thin, minimal divider — renders cleanly on desktop and mobile widths. */
 const DIVIDER = '━━━━━━━━━━━━━━━━━━━━━━━━━━';
+
+/**
+ * Header plaque, rendered inside a code block so Discord uses a MONOSPACE
+ * font — this guarantees "DEVELOPER'S FORGE" is perfectly centred with
+ * even margins on every device (desktop + mobile), unlike proportional
+ * fonts where manual spaces drift.
+ *
+ * Inner width: 27 columns. Padding is computed, not hand-tuned:
+ *   "• W E L C O M E •" (18 ch) → 4/5 spaces
+ *   "DEVELOPER'S FORGE" (17 ch) → 5/5 spaces
+ */
+function headerPlaque() {
+  const INNER = 27;
+  const line = (text) => {
+    const pad = INNER - text.length;
+    const left = Math.floor(pad / 2);
+    return `│${' '.repeat(left)}${text}${' '.repeat(pad - left)}│`;
+  };
+  return [
+    '```',
+    `╭${'─'.repeat(INNER)}╮`,
+    line('• W E L C O M E •'),
+    line("DEVELOPER'S FORGE"),
+    `╰${'─'.repeat(INNER)}╯`,
+    '```',
+  ].join('\n');
+}
 
 /**
  * 10 curated inspirational quotes. Each welcome DM randomly features one,
@@ -116,14 +139,11 @@ export function clamp(text, max = 3800) {
  */
 export function buildWelcomeBody(vars, quote = pickQuote()) {
   const body = [
-    '╭──────────────────────────────╮',
-    '           ⚒️ WELCOME',
-    "        DEVELOPER'S FORGE",
-    '╰──────────────────────────────╯',
+    headerPlaque(),
     '',
     'Hello, **{username}**.',
     '',
-    "Welcome to {serverName} — you are member **#{memberCount}**, joined {joinDate}.",
+    'Welcome to {serverName} — you are member **#{memberCount}**, joined {joinDate}.',
     '',
     "This isn't just another Discord server —",
     "it's a place where developers, ethical hackers,",

@@ -101,10 +101,9 @@ export const config = Object.freeze({
     forgeMember: envStr('FORGE_MEMBER_ROLE_ID'),
   }),
 
-  // --- Premium Welcome DM branding (optional overrides, curated defaults
-  // --- live in managers/dmContent.js) ---
+  // --- Premium Welcome DM branding (optional override, curated default
+  // --- lives in managers/dmContent.js) ---
   branding: Object.freeze({
-    welcomeBannerUrl: envStr('WELCOME_BANNER_URL'),
     forgeLogoUrl: envStr('FORGE_LOGO_URL'),
   }),
 
