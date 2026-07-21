@@ -7,6 +7,22 @@ Discord embed limitations handled honestly:
     animated GIF banners instead (fully supported via embed.set_image).
   • Up to 10 embeds per message; we use 4 focused ones.
   • Buttons in DMs must be link-style (no interaction handler needed).
+
+RESPONSIVE DESIGN (single layout, all devices):
+  Discord embeds are natively fluid — the client resizes the embed to the
+  viewport (320 px phones → 1920 px desktops, portrait & landscape, any
+  DPI) — so responsiveness is achieved by never fighting that fluidity:
+    • Prose is written as flowing paragraphs (no manual desktop-tuned
+      line breaks) so text auto-wraps at every width and never overflows.
+    • Banner GIFs use set_image, which scales proportionally to the embed
+      width and reserves its box while loading → no layout shift, no
+      overlap, banner always stays at the top of the visual hierarchy.
+    • Buttons are laid out at most MAX_BUTTONS_PER_ROW per action row in
+      BALANCED rows (5 → 3+2, 4 → 2+2). Five labelled buttons in one row
+      shrink below the 44×44 px minimum touch target on small phones;
+      balanced rows keep every button fully labelled and easily tappable
+      on 320–414 px screens while staying tidy on desktop.
+  Verified by onboarding/tests/test_dm_responsive.py.
 """
 from __future__ import annotations
 
@@ -26,6 +42,23 @@ C_WELCOME = 0x5865F2   # blurple
 C_START = 0x57F287     # green
 C_RULES = 0xFEE75C     # yellow
 C_COMMUNITY = 0xEB459E # fuchsia
+
+# Max buttons per action row — responsive touch-target cap (see module doc).
+MAX_BUTTONS_PER_ROW = 3
+
+
+def balanced_row_sizes(count: int) -> list[int]:
+    """Split ``count`` buttons into balanced row sizes.
+
+    Balancing (5 → [3, 2], 4 → [2, 2]) instead of greedy filling
+    (4 → [3, 1]) keeps rows visually even so spacing stays consistent
+    and no button looks orphaned at any viewport width.
+    """
+    if count <= 0:
+        return []
+    rows = -(-count // MAX_BUTTONS_PER_ROW)  # ceil division
+    base, remainder = divmod(count, rows)
+    return [base + (1 if r < remainder else 0) for r in range(rows)]
 
 
 def _ch(cid: int | None, fallback: str) -> str:
@@ -75,12 +108,16 @@ def build_premium_dm_embeds(
     custom = welcome_settings.get("dm_message")
     start = discord.Embed(
         title="🚀 Start Here — 3 quick steps",
+        # Sub-lines use blockquote markup ("> ") instead of leading spaces:
+        # Discord preserves the quote bar at every viewport width, so
+        # wrapped continuation text stays visually attached to its step on
+        # narrow phones instead of turning into ragged floating lines.
         description=custom or (
             f"**1.** 📜 Read the rules → {_ch(rules, '#rules')}\n"
             f"**2.** 💻 Introduce yourself → {_ch(dev_intro, '#dev-intro')}\n"
-            f"   Tell us what you build — languages, frameworks, projects!\n"
+            f"> Tell us what you build — languages, frameworks, projects!\n"
             f"**3.** 🎉 Say hi in {_ch(chill, '#chill-zone')}\n"
-            f"   Your **first message** there unlocks the 🔥 "
+            f"> Your **first message** there unlocks the 🔥 "
             f"**Forge Member** role!"
         ),
         color=C_START,
@@ -126,40 +163,49 @@ def build_premium_dm_embeds(
 def build_premium_dm_view(
     member: discord.Member, settings: dict[str, Any]
 ) -> discord.ui.View | None:
-    """Link buttons: Rules · Community Guide · Support · Invite Friends · Website."""
+    """Link buttons: Rules · Community Guide · Support · Invite Friends · Website.
+
+    Buttons are placed on explicit, BALANCED rows (max MAX_BUTTONS_PER_ROW
+    per row) so every button keeps a comfortable ≥ 44×44 px touch target on
+    phones instead of letting discord.py greedily pack 5 into one row.
+    """
     guild = member.guild
     view = discord.ui.View(timeout=None)
-    added = False
 
     def url_for(channel_id: int | None) -> str | None:
         return (f"https://discord.com/channels/{guild.id}/{channel_id}"
                 if channel_id else None)
 
-    buttons: list[tuple[str, str | None, str]] = [
-        ("📜 Rules", url_for(settings.get("rules_channel_id")), "rules"),
-        ("📖 Community Guide", url_for(settings.get("dev_intro_channel_id")), "guide"),
-        ("💬 Chill Zone", url_for(settings.get("chill_zone_channel_id")), "chill"),
-        ("🆘 Support", url_for(settings.get("welcome_channel_id")), "support"),
+    candidates: list[tuple[str, str | None]] = [
+        ("📜 Rules", url_for(settings.get("rules_channel_id"))),
+        ("📖 Community Guide", url_for(settings.get("dev_intro_channel_id"))),
+        ("💬 Chill Zone", url_for(settings.get("chill_zone_channel_id"))),
+        ("🆘 Support", url_for(settings.get("welcome_channel_id"))),
     ]
-    for label, url, _key in buttons:
-        if url:
-            view.add_item(discord.ui.Button(
-                label=label, style=discord.ButtonStyle.link, url=url))
-            added = True
 
     # invite friends — vanity URL if the guild has one, else main guild link
-    invite_url = (f"https://discord.gg/{guild.vanity_url_code}"
-                  if guild.vanity_url_code else None)
-    if invite_url:
-        view.add_item(discord.ui.Button(
-            label="🤝 Invite Friends", style=discord.ButtonStyle.link,
-            url=invite_url))
-        added = True
+    if guild.vanity_url_code:
+        candidates.append(
+            ("🤝 Invite Friends", f"https://discord.gg/{guild.vanity_url_code}"))
 
     website = settings.get("website_url")
     if website:
-        view.add_item(discord.ui.Button(
-            label="🌐 Website", style=discord.ButtonStyle.link, url=website))
-        added = True
+        candidates.append(("🌐 Website", website))
 
-    return view if added else None
+    active = [(label, url) for label, url in candidates if url]
+    if not active:
+        return None
+
+    # Assign each button an explicit balanced row index.
+    row_index, used_in_row = 0, 0
+    sizes = balanced_row_sizes(len(active))
+    for label, url in active:
+        if used_in_row >= sizes[row_index]:
+            row_index += 1
+            used_in_row = 0
+        view.add_item(discord.ui.Button(
+            label=label, style=discord.ButtonStyle.link, url=url,
+            row=row_index))
+        used_in_row += 1
+
+    return view

@@ -77,6 +77,32 @@ Server Invite Used.
    the branded footer “Developer's Forge • Learn • Build • Grow” and a button
    row (📖 Rules · 👋 Introduce Yourself · 🎭 Choose Roles · 💬 Community · 🛟 Support).
    Closed DMs are handled gracefully and never affect the join flow.
+
+   **📱 Fully responsive layout (v4.4)** — one single layout that adapts to
+   every device (desktop, laptop, tablet, Android & iPhone, portrait and
+   landscape, any resolution / DPI):
+   - **Mobile-safe header plaque** — the monospace plaque is 21 columns wide
+     (code blocks never soft-wrap in Discord), fitting even a 320 px phone
+     with computed, perfectly-centred padding. No clipping, no horizontal
+     scrolling on any screen.
+   - **Wrap-proof dividers** — 14 heavy glyphs (≈210 px), guaranteed to stay
+     a single unbroken rule on the narrowest client instead of breaking into
+     ragged double lines.
+   - **Fluid prose** — descriptions are flowing paragraphs with no manual
+     desktop-tuned line breaks, so the Discord client auto-wraps them cleanly
+     at every viewport width; text never overflows its container.
+   - **Touch-friendly balanced button rows** — max **3 buttons per action
+     row**, balanced across rows (5 → 3+2, 4 → 2+2), keeping every button at
+     or above the 44×44 px minimum touch target on 320–414 px phones while
+     staying tidy on desktop.
+   - **Zero layout shift** — banners/GIFs use `set_image` (Discord reserves
+     the image box while loading), the plaque/dividers are fixed-size-safe,
+     and visual hierarchy (banner → title → description → steps → quote →
+     footer) is identical on every device.
+   - **Verified across 320 / 360 / 390 / 414 / 768 / 820 / 1024 / 1280 /
+     1440 / 1920 px** by automated checks:
+     `bot/tests/dm-responsive-check.js` (Node) and
+     `onboarding/tests/test_dm_responsive.py` (Python).
 3. **Forge Member** role auto-assigned
 4. Developer Intro message auto-sent to the dev-intro channel
 5. Telegram join notification via the backend

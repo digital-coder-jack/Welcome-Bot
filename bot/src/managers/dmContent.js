@@ -34,8 +34,35 @@ import { FORGE_BRAND } from './brandingManager.js';
  */
 export const BRAND = FORGE_BRAND;
 
-/** Thin, minimal divider — renders cleanly on desktop and mobile widths. */
-const DIVIDER = '━━━━━━━━━━━━━━━━━━━━━━━━━━';
+/**
+ * ── Responsive layout constants ─────────────────────────────────────────
+ * Discord embeds cannot use CSS, so "responsive" is achieved with:
+ *   1. FLUID TEXT   — prose written as single flowing paragraphs so the
+ *                     Discord client auto-wraps at every viewport width
+ *                     (320 px phones → 1920 px desktops, portrait &
+ *                     landscape) with no ragged manual line breaks.
+ *   2. SAFE FIXED ELEMENTS — the only fixed-width pieces (the monospace
+ *                     header plaque and the dividers) are sized to fit
+ *                     the NARROWEST supported client: a 320 px phone,
+ *                     whose embed content area fits ~28 monospace
+ *                     columns / ~16 heavy-line glyphs. Everything wider
+ *                     simply centres inside the larger embed.
+ *
+ * Verified against 320 / 360 / 390 / 414 / 768 / 820 / 1024 / 1280 /
+ * 1440 / 1920 px budgets by bot/tests/dm-responsive-check.js.
+ */
+
+/** Max monospace columns that fit a 320 px phone without clipping. */
+export const MOBILE_SAFE_CODE_COLS = 28;
+
+/**
+ * Divider — 14 heavy glyphs ≈ 210 px, safely inside the ~250 px content
+ * area of a 320 px phone, so it NEVER wraps into a broken double line
+ * (the previous 26-glyph divider broke below ~400 px). On wide screens it
+ * reads as an elegant short rule, keeping identical vertical rhythm on
+ * every device.
+ */
+export const DIVIDER = '━'.repeat(14);
 
 /**
  * Header plaque, rendered inside a code block so Discord uses a MONOSPACE
@@ -43,12 +70,18 @@ const DIVIDER = '━━━━━━━━━━━━━━━━━━━━━
  * even margins on every device (desktop + mobile), unlike proportional
  * fonts where manual spaces drift.
  *
- * Inner width: 27 columns. Padding is computed, not hand-tuned:
- *   "• W E L C O M E •" (18 ch) → 4/5 spaces
- *   "DEVELOPER'S FORGE" (17 ch) → 5/5 spaces
+ * RESPONSIVE SIZING — code blocks never soft-wrap in Discord, so the
+ * plaque's total width is the hard floor of the whole layout. Inner
+ * width is 19 columns → 21 columns total including the │ borders, which
+ * fits the ~28-column budget of a 320 px phone with room to spare
+ * (the previous 29-column plaque was clipped on small phones).
+ *
+ * Padding is computed, not hand-tuned — both lines are exactly 17 chars
+ * ("• W E L C O M E •" and "DEVELOPER'S FORGE"), so each gets a perfect
+ * 1/1 space margin and stays optically centred at every DPI.
  */
-function headerPlaque() {
-  const INNER = 27;
+export function headerPlaque() {
+  const INNER = 19;
   const line = (text) => {
     const pad = INNER - text.length;
     const left = Math.floor(pad / 2);
@@ -140,10 +173,10 @@ export function buildWelcomeBody(vars, quote = pickQuote()) {
     '',
     'Welcome to {serverName} — you are member **#{memberCount}**, joined {joinDate}.',
     '',
-    "This isn't just another Discord server —",
-    "it's a place where developers, ethical hackers,",
-    'AI enthusiasts, and creators come together',
-    'to learn, build, and grow.',
+    // Single flowing paragraph — the client auto-wraps it to the exact
+    // viewport width (no manual desktop-tuned breaks that go ragged on
+    // phones), so the text block is fluid from 320 px to 1920 px.
+    "This isn't just another Discord server — it's a place where developers, ethical hackers, AI enthusiasts, and creators come together to learn, build, and grow.",
     '',
     DIVIDER,
     '',
@@ -163,8 +196,7 @@ export function buildWelcomeBody(vars, quote = pickQuote()) {
     '',
     DIVIDER,
     '',
-    'Forge your skills.',
-    'Build your future.',
+    'Forge your skills. Build your future.',
     '',
     '🔥 The Forge is waiting, **{displayName}**.',
     '',

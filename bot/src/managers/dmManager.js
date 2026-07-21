@@ -14,9 +14,12 @@
  *   Embed 2: The server rules (unchanged — reuses the existing rules util
  *            for full backward compatibility).
  *
- * A single Link-button row (Rules / Introduce Yourself / Choose Roles /
- * Community / Support) is attached. Link buttons need zero interaction
- * state and never expire, so they are ideal inside DMs.
+ * Link buttons (Rules / Introduce Yourself / Choose Roles / Community /
+ * Support) are attached in RESPONSIVE ROWS: at most 3 buttons per row,
+ * balanced across rows. On phones Discord shrinks all buttons in a row to
+ * fit — five labelled buttons in one row collapse below the 44×44 px touch
+ * target; two balanced rows keep every button comfortably tappable on
+ * 320–414 px screens while still looking tidy on desktop.
  *
  * Every step is best-effort: closed DMs never break the join flow — the
  * function resolves with a status string and never throws.
@@ -32,23 +35,58 @@ import { BRAND, buildWelcomeBody } from './dmContent.js';
 import { brandIcon } from './brandingManager.js';
 
 /**
- * Button row for the welcome DM. All buttons are Link buttons so they work
- * inside DMs (interaction components with customIds also work, but links
- * need zero state and never expire).
+ * Maximum buttons per action row for comfortable touch targets.
  *
- * Discord caps a row at 5 buttons — exactly the 5 we want:
- * Rules / Introduce Yourself / Choose Roles / Community / Support.
+ * Discord allows 5 per row, but on a 320–414 px phone five labelled
+ * buttons shrink far below Apple/Google's 44×44 px minimum touch target
+ * and their labels get ellipsised. Capping at 3 per row keeps every
+ * button large, fully labelled and easily tappable on all devices while
+ * remaining a single tidy strip on desktop.
+ */
+const MAX_BUTTONS_PER_ROW = 3;
+
+/**
+ * Split a flat button list into balanced action rows.
+ *
+ * Balancing (5 → 3+2, 4 → 2+2) instead of greedy filling (5 → 3+2 but
+ * 4 → 3+1) keeps the rows visually even, so spacing stays consistent and
+ * nothing looks orphaned at any viewport width.
+ *
+ * @param {ButtonBuilder[]} buttons
+ * @returns {ActionRowBuilder[]}
+ */
+export function toBalancedRows(buttons) {
+  if (buttons.length === 0) return [];
+  const rowCount = Math.ceil(buttons.length / MAX_BUTTONS_PER_ROW);
+  const base = Math.floor(buttons.length / rowCount);
+  const remainder = buttons.length % rowCount;
+
+  const rows = [];
+  let index = 0;
+  for (let r = 0; r < rowCount; r += 1) {
+    const size = base + (r < remainder ? 1 : 0);
+    rows.push(new ActionRowBuilder().addComponents(buttons.slice(index, index + size)));
+    index += size;
+  }
+  return rows;
+}
+
+/**
+ * Build the welcome-DM buttons as responsive, balanced action rows.
+ * All buttons are Link buttons so they work inside DMs (interaction
+ * components with customIds also work, but links need zero state and
+ * never expire).
  *
  * @param {import('discord.js').Guild} guild
  * @param {object} welcomeSettings
- * @returns {ActionRowBuilder|null} null when no channel is configured.
+ * @returns {ActionRowBuilder[]} empty array when no channel is configured.
  */
 function buildDMButtons(guild, welcomeSettings) {
-  const row = new ActionRowBuilder();
+  const buttons = [];
   const channelLink = (channelId) => `https://discord.com/channels/${guild.id}/${channelId}`;
 
   if (config.channels.rules || config.channels.welcome) {
-    row.addComponents(
+    buttons.push(
       new ButtonBuilder()
         .setLabel('Rules')
         .setEmoji('📖')
@@ -60,7 +98,7 @@ function buildDMButtons(guild, welcomeSettings) {
   // if DEV_INTRO_CHANNEL_ID is not configured the button is hidden rather
   // than pointing somewhere wrong (e.g. the gateway/welcome channel).
   if (config.channels.devIntro) {
-    row.addComponents(
+    buttons.push(
       new ButtonBuilder()
         .setLabel('Introduce Yourself')
         .setEmoji('👋')
@@ -69,7 +107,7 @@ function buildDMButtons(guild, welcomeSettings) {
     );
   }
   if (config.channels.rolesPicker) {
-    row.addComponents(
+    buttons.push(
       new ButtonBuilder()
         .setLabel('Choose Roles')
         .setEmoji('🎭')
@@ -78,7 +116,7 @@ function buildDMButtons(guild, welcomeSettings) {
     );
   }
   if (config.channels.community || config.channels.welcome) {
-    row.addComponents(
+    buttons.push(
       new ButtonBuilder()
         .setLabel('Community')
         .setEmoji('💬')
@@ -87,7 +125,7 @@ function buildDMButtons(guild, welcomeSettings) {
     );
   }
   if (config.channels.support || config.channels.log) {
-    row.addComponents(
+    buttons.push(
       new ButtonBuilder()
         .setLabel('Support')
         .setEmoji('🛟')
@@ -96,7 +134,7 @@ function buildDMButtons(guild, welcomeSettings) {
     );
   }
 
-  return row.components.length > 0 ? row : null;
+  return toBalancedRows(buttons);
 }
 
 /**
@@ -158,7 +196,7 @@ export async function sendWelcomeDM(member) {
   const wc = settings.welcome;
   if (!wc.dmEnabled) return 'Disabled';
 
-  const buttons = buildDMButtons(member.guild, wc);
+  const buttonRows = buildDMButtons(member.guild, wc);
 
   try {
     await member.send({
@@ -166,7 +204,7 @@ export async function sendWelcomeDM(member) {
         premiumWelcomeDMEmbed(member),
         rulesDMEmbed(member.guild.name),
       ],
-      ...(buttons ? { components: [buttons] } : {}),
+      ...(buttonRows.length > 0 ? { components: buttonRows } : {}),
     });
     return 'Delivered';
   } catch (error) {
