@@ -74,6 +74,27 @@ function envBool(key, fallback) {
   return ['true', '1', 'yes', 'on'].includes(raw.trim().toLowerCase());
 }
 
+/**
+ * Read a comma-separated `label=roleId` map. Invalid entries are ignored so
+ * missing or partially configured onboarding roles never prevent startup.
+ * @param {string} key
+ * @returns {Readonly<Record<string, string>>}
+ */
+function envRoleMap(key) {
+  const raw = process.env[key];
+  if (!raw) return Object.freeze({});
+
+  const entries = {};
+  for (const item of raw.split(',')) {
+    const separator = item.indexOf('=');
+    if (separator <= 0) continue;
+    const label = item.slice(0, separator).trim();
+    const roleId = item.slice(separator + 1).trim();
+    if (label && roleId) entries[label] = roleId;
+  }
+  return Object.freeze(entries);
+}
+
 export const config = Object.freeze({
   // --- Discord core credentials ---
   token: envStr('DISCORD_TOKEN'),
@@ -99,6 +120,15 @@ export const config = Object.freeze({
   }),
   roles: Object.freeze({
     forgeMember: envStr('FORGE_MEMBER_ROLE_ID'),
+  }),
+
+  // --- Discord onboarding role maps (all optional) ---
+  onboarding: Object.freeze({
+    roles: Object.freeze({
+      interests: envRoleMap('ONBOARDING_INTEREST_ROLE_IDS'),
+      ageGroups: envRoleMap('ONBOARDING_AGE_ROLE_IDS'),
+      experience: envRoleMap('ONBOARDING_EXPERIENCE_ROLE_IDS'),
+    }),
   }),
 
   // --- Premium Welcome DM branding (optional override, curated default
