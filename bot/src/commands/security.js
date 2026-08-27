@@ -1,4 +1,4 @@
-/**
+/*
  * commands/security.js
  * ---------------------------------------------------------------------------
  * Phase 6 — /security — the complete Security Dashboard (Forge Guardian v2.0).
@@ -730,7 +730,7 @@ async function settingsView(interaction) {
       },
       {
         name: '⚖️ Thresholds',
-        value: `Approval alert at risk ≥ ${sc.approvalThreshold} • Warn threshold: ${security.warnThreshold} • Timeout: ${security.timeoutMinutes} min\nNew account: < ${sc.newAccountDays}d • Recent account: < ${sc.recentAccountDays}d`,
+        value: `Approval alert at risk ≥ ${sc.approvalThreshold} • Warn threshold: ${security.warnThreshold} • Timeout: ${security.timeoutMinutes} min\nNew account: < ${sc.newAccountDays}d`,
       },
       {
         name: '📡 Channels (all optional)',
