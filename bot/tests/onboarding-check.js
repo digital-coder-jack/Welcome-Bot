@@ -35,7 +35,7 @@ try {
 
   process.env.ONBOARDING_INTEREST_ROLE_IDS =
     'Cyber Security=interest-cyber,AI Enthusiast=interest-ai,Programmer=interest-programmer';
-  process.env.ONBOARDING_AGE_ROLE_IDS = 'Under 13=age-under-13,18+=age-18';
+  process.env.ONBOARDING_AGE_ROLE_IDS = 'Under 13=age-under-13,13–15=age-13-15,18+=age-18';
   process.env.ONBOARDING_EXPERIENCE_ROLE_IDS = 'Beginner=exp-beginner,Expert=exp-expert';
 
   const manager = await import('../src/managers/onboardingManager.js');
@@ -86,6 +86,7 @@ try {
         ['guild-1', { id: 'guild-1', name: '@everyone' }],
         ['interest-cyber', { id: 'interest-cyber', name: 'Cyber Security' }],
         ['age-under-13', { id: 'age-under-13', name: 'Under 13' }],
+        ['age-13-15', { id: 'age-13-15', name: '13–15' }],
         ['admin-role', { id: 'admin-role', name: 'Administrator' }],
         ['staff-role', { id: 'staff-role', name: 'Staff' }],
       ]),
@@ -104,6 +105,7 @@ try {
             'interest-ai': { id: 'interest-ai', name: 'AI Enthusiast' },
             'interest-programmer': { id: 'interest-programmer', name: 'Programmer' },
             'age-under-13': { id: 'age-under-13', name: 'Under 13' },
+            'age-13-15': { id: 'age-13-15', name: '13–15' },
             'age-18': { id: 'age-18', name: '18+' },
             'exp-beginner': { id: 'exp-beginner', name: 'Beginner' },
             'exp-expert': { id: 'exp-expert', name: 'Expert' },
@@ -204,6 +206,7 @@ try {
   await interactionEvent.execute(ageInteraction, { commands: new Map() });
   assert.deepEqual(roleCalls, [
     { action: 'remove', roleId: 'age-under-13' },
+    { action: 'remove', roleId: 'age-13-15' },
     { action: 'add', roleId: 'age-18' },
   ]);
   assert.equal(ageInteraction.editPayload.components[0].components[0].data.custom_id, 'onboarding:user-1:experience');

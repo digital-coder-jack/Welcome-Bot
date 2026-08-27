@@ -186,6 +186,10 @@ function previousRoleIdsForStep(step, previous) {
   return roleIdsForSelection(step, previous?.experience);
 }
 
+function configuredRoleIdsForStep(step) {
+  return new Set(Object.values(STEP_ROLE_MAPS[step]?.() ?? {}).filter(Boolean));
+}
+
 function desiredRoleIdsForState(state) {
   return new Set([
     ...roleIdsForSelection(ONBOARDING_STEPS.INTERESTS, state.interests),
@@ -194,7 +198,7 @@ function desiredRoleIdsForState(state) {
   ]);
 }
 
-export function managedRoleChanges(step, previous, next) {
+export function managedRoleChanges(step, previous, next, currentRoleIds = null) {
   const previousIds = new Set(previousRoleIdsForStep(step, previous));
   const desiredIds = desiredRoleIdsForState(next);
   const nextIds = new Set(
@@ -205,16 +209,21 @@ export function managedRoleChanges(step, previous, next) {
         : roleIdsForSelection(step, next.experience)
   );
 
+  const managedIds = configuredRoleIdsForStep(step);
+  const currentlyAssignedStaleIds = currentRoleIds
+    ? [...currentRoleIds].filter((roleId) => managedIds.has(roleId))
+    : [];
+  const removeCandidates = new Set([...previousIds, ...currentlyAssignedStaleIds]);
   return {
     add: [...nextIds].filter((roleId) => !previousIds.has(roleId)),
-    remove: [...previousIds].filter((roleId) => !nextIds.has(roleId) && !desiredIds.has(roleId)),
+    remove: [...removeCandidates].filter((roleId) => !nextIds.has(roleId) && !desiredIds.has(roleId)),
   };
 }
 
 async function synchronizeConfiguredRoles(member, step, previous, next) {
-  const changes = managedRoleChanges(step, previous, next);
   const status = { added: [], removed: [], skipped: [], errors: [] };
   const currentRoleIds = new Set(member.roles?.cache?.keys?.() ?? []);
+  const changes = managedRoleChanges(step, previous, next, currentRoleIds);
   const desiredStepRoleIds = new Set(
     step === ONBOARDING_STEPS.INTERESTS
       ? roleIdsForSelection(step, next.interests)
