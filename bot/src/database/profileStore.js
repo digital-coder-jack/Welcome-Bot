@@ -23,6 +23,7 @@
  *               previousJoins, previousLeaves, rejoinCount, reputation
  *   activity:   messageCount, voiceMinutes, attachmentsSent, linksShared,
  *               lastSeen
+ *   onboarding: interests[], ageGroup, experience
  *
  * Activity counters are flushed lazily (debounced by jsonStore) so hot paths
  * (messageCreate) stay cheap. All functions are fail-safe.
@@ -33,6 +34,36 @@ import { createJsonStore } from './jsonStore.js';
 import { logger } from '../utils/logger.js';
 
 const store = createJsonStore('member-profiles.json');
+
+export const ONBOARDING_INTERESTS = Object.freeze([
+  'Cyber Security',
+  'AI Enthusiast',
+  'Web Developer',
+  'Programmer',
+  'Vibe Coder',
+  'ML Enthusiast',
+  'Game Developer',
+  'App Developer',
+  'UI/UX Designer',
+  'DevOps',
+  'Student',
+  'Other',
+]);
+
+export const ONBOARDING_AGE_GROUPS = Object.freeze([
+  'Under 13',
+  '13–15',
+  '16–17',
+  '18+',
+  'Prefer not to say',
+]);
+
+export const ONBOARDING_EXPERIENCE_LEVELS = Object.freeze([
+  'Beginner',
+  'Intermediate',
+  'Advanced',
+  'Expert',
+]);
 
 function key(guildId, userId) {
   return `${guildId}:${userId}`;
@@ -96,6 +127,11 @@ export function emptyProfile(guildId, userId) {
       linksShared: 0,
       lastSeen: null,
     },
+    onboarding: {
+      interests: [],
+      ageGroup: null,
+      experience: null,
+    },
     updatedAt: null,
   };
 }
@@ -113,6 +149,7 @@ function withDefaults(guildId, userId, stored) {
     moderation: { ...base.moderation, ...(stored.moderation ?? {}) },
     security: { ...base.security, ...(stored.security ?? {}) },
     activity: { ...base.activity, ...(stored.activity ?? {}) },
+    onboarding: { ...base.onboarding, ...(stored.onboarding ?? {}) },
   };
 }
 
@@ -184,6 +221,43 @@ export async function bumpProfile(guildId, userId, section, field, by = 1) {
     logger.warn(`profileStore bumpProfile failed: ${error.message}`);
     return null;
   }
+}
+
+/**
+ * Update the new onboarding data for an existing member profile. Missing
+ * profiles are created under the same `<guildId>:<userId>` key used by the
+ * rest of the profile store, so onboarding updates can never create a
+ * duplicate record for the same Discord user in the same guild.
+ *
+ * @param {string} guildId
+ * @param {string} userId
+ * @param {object} data
+ * @param {string[]} [data.interests]  Multiple selections.
+ * @param {string|null} [data.ageGroup]  One selection.
+ * @param {string|null} [data.experience]  One selection.
+ * @returns {Promise<object|null>} the updated profile.
+ */
+export async function updateOnboardingData(guildId, userId, data) {
+  const onboarding = {};
+
+  if (Object.prototype.hasOwnProperty.call(data, 'interests')) {
+    const selected = Array.isArray(data.interests) ? data.interests : [];
+    onboarding.interests = selected.filter((interest) => ONBOARDING_INTERESTS.includes(interest));
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, 'ageGroup')) {
+    onboarding.ageGroup =
+      data.ageGroup === null || ONBOARDING_AGE_GROUPS.includes(data.ageGroup) ? data.ageGroup : null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, 'experience')) {
+    onboarding.experience =
+      data.experience === null || ONBOARDING_EXPERIENCE_LEVELS.includes(data.experience)
+        ? data.experience
+        : null;
+  }
+
+  return updateProfile(guildId, userId, { onboarding });
 }
 
 /**
