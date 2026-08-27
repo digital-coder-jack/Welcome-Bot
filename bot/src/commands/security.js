@@ -283,6 +283,18 @@ async function memberProfile(interaction) {
     `**Member Number:** ${v(profile.account.memberNumber, 'Unknown')}`,
   ].join('\n');
 
+  const onboarding = profile.onboarding ?? {};
+  const interests = Array.isArray(onboarding.interests)
+    ? onboarding.interests.filter((interest) => typeof interest === 'string' && interest.trim()).join(', ')
+    : '';
+  const onboardingInterests = interests || 'Not selected';
+  const onboardingAgeGroup = typeof onboarding.ageGroup === 'string' && onboarding.ageGroup.trim()
+    ? onboarding.ageGroup
+    : 'Not selected';
+  const onboardingExperience = typeof onboarding.experience === 'string' && onboarding.experience.trim()
+    ? onboarding.experience
+    : 'Not selected';
+
   const serverLines = [
     `**Highest Role:** ${highestRole}`,
     `**Roles:** ${roles}`,
@@ -292,6 +304,9 @@ async function memberProfile(interaction) {
     `**Forge Member:** ${v(profile.server.forgeMemberStatus)}`,
     `**Dev Intro:** ${v(profile.server.devIntroStatus)}`,
     `**Welcome DM:** ${v(profile.server.welcomeDmStatus)}`,
+    `**🎯 Interests:** ${onboardingInterests}`,
+    `**🎂 Age Group:** ${onboardingAgeGroup}`,
+    `**📊 Experience:** ${onboardingExperience}`,
   ].join('\n');
 
   const m = profile.moderation;
