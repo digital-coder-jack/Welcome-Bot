@@ -1,10 +1,16 @@
 """
 Vercel serverless entry point.
 
-Vercel's Python runtime auto-detects the ASGI `app` object exported here
-and serves it as a serverless function. All routes are rewritten to this
-file via backend/vercel.json, so the full FastAPI app (POST /moderate,
-GET /health, GET /) works unchanged.
+Vercel's Python runtime auto-detects the FastAPI `app` object exported here
+(api/index.py is a recognized entrypoint) and serves the WHOLE app as a
+single Vercel Function for ALL request paths — no rewrites needed. FastAPI's
+own router then matches the original path (POST /moderate, GET /health,
+GET /, ...).
+
+NOTE: do NOT add a `rewrites` rule pointing to /api/index in vercel.json.
+With Vercel's FastAPI framework detection, such a rewrite replaces the
+request path the ASGI app receives with the literal destination
+"/api/index", so every route 404s with {"detail":"Not Found"}.
 
 Local dev is unaffected — keep using:  uvicorn app.main:app --reload
 """

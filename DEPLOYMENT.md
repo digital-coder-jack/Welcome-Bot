@@ -18,7 +18,7 @@ The backend ships with everything Vercel needs:
 ```
 backend/
 ├── api/index.py     # Vercel ASGI entry point (exports the FastAPI app)
-├── vercel.json      # Rewrites all routes → /api/index, 30s max duration
+├── vercel.json      # Function config (30s max duration) — no rewrites; Vercel auto-detects the FastAPI app
 ├── .vercelignore    # Excludes .env, venv, caches
 └── requirements.txt # Auto-installed by Vercel's Python runtime
 ```
