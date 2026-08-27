@@ -51,6 +51,14 @@ const AWAITING_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const introducedMembers = new Map();
 
 /**
+ * Members whose welcome DM has been delivered during the introduction TTL.
+ * This is separate from the full-introduction dedupe so a transient DM failure
+ * can be retried without duplicating the public welcome or developer intro.
+ * @type {Map<string, number>} key = `${guildId}:${userId}`, value = expiry ts.
+ */
+const deliveredWelcomeDMs = new Map();
+
+/**
  * Members who joined while Membership Screening was enabled and have not
  * yet passed the Gateway.
  * @type {Map<string, number>} key = `${guildId}:${userId}`, value = expiry ts.
@@ -134,14 +142,30 @@ export async function sendMemberIntroduction(member, { source = 'join' } = {}) {
 
   if (member.user.bot) return result;
 
-  // --- Duplicate guard: one introduction per member, ever (within TTL) ---
+  // --- Duplicate guard: one public introduction per member (within TTL) ---
   evictExpired(introducedMembers);
+  evictExpired(deliveredWelcomeDMs);
   const key = keyOf(member.guild.id, member.id);
   if (introducedMembers.has(key)) {
     logger.warn(
       `Duplicate introduction suppressed for ${member.user.tag} (${member.id}) [source: ${source}].`
     );
-    result.dmStatus = 'Skipped (already introduced)';
+    if (deliveredWelcomeDMs.has(key)) {
+      result.dmStatus = 'Skipped (already introduced)';
+      return result;
+    }
+
+    // The public welcome/dev-intro already ran, but the DM did not deliver.
+    // Retry only the DM so a transient failure does not permanently suppress it.
+    try {
+      result.dmStatus = await sendWelcomeDM(member);
+      if (result.dmStatus === 'Delivered') {
+        deliveredWelcomeDMs.set(key, Date.now() + INTRODUCED_TTL_MS);
+      }
+    } catch (error) {
+      result.dmStatus = 'Failed (DMs closed)';
+      logger.warn(`Failed to retry welcome DM: ${error.message}`);
+    }
     return result;
   }
   introducedMembers.set(key, Date.now() + INTRODUCED_TTL_MS);
@@ -172,6 +196,9 @@ export async function sendMemberIntroduction(member, { source = 'join' } = {}) {
   //             server rules) via dmManager ---
   try {
     result.dmStatus = await sendWelcomeDM(member);
+    if (result.dmStatus === 'Delivered') {
+      deliveredWelcomeDMs.set(key, Date.now() + INTRODUCED_TTL_MS);
+    }
   } catch (error) {
     result.dmStatus = 'Failed (DMs closed)';
     logger.warn(`Failed to send welcome DM: ${error.message}`);

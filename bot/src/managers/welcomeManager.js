@@ -25,6 +25,7 @@ import { getSettings } from '../database/settingsStore.js';
 import { getTheme } from './themeManager.js';
 import { pickWelcomeGif, pickEmojiBurst, pickGuildSticker, LOADING_FRAMES } from './gifManager.js';
 import { brandIcon } from './brandingManager.js';
+import { buildInterestsMenu } from './onboardingManager.js';
 
 /** Delay between animation frames (ms). Keep >= 1500 to respect rate limits. */
 const FRAME_DELAY_MS = 2200;
@@ -194,10 +195,11 @@ export async function sendPublicWelcome(member) {
   const theme = getTheme(wc.theme);
   const gifUrl = pickWelcomeGif(member.guild.id, wc);
   const buttons = buildWelcomeButtons(member.guild, theme, wc);
+  const onboardingMenu = buildInterestsMenu(member.id);
   const finalPayload = {
     content: `${member}`,
     embeds: [premiumWelcomeEmbed(member, theme, gifUrl)],
-    ...(buttons ? { components: [buttons] } : {}),
+    components: buttons ? [buttons, onboardingMenu] : [onboardingMenu],
   };
 
   try {
