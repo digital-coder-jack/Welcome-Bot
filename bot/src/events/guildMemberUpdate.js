@@ -33,7 +33,8 @@ import { updateProfile } from '../database/profileStore.js';
 import { config } from '../config.js';
 import {
   shouldSendGatewayIntroduction,
-  sendMemberIntroduction,
+  startPostScreeningOnboarding,
+  completePostScreeningOnboarding,
 } from '../managers/introductionManager.js';
 
 export default {
@@ -49,18 +50,27 @@ export default {
     //     after the member passes the Gateway (best-effort, never throws) ---
     try {
       if (shouldSendGatewayIntroduction(oldMember, newMember)) {
-        const intro = await sendMemberIntroduction(newMember, { source: 'gateway' });
-        if (intro.sent) {
-          logger.info(
-            `Gateway passed — introduction sent for ${newMember.user.tag} (${newMember.id}).`
-          );
-          // Keep the permanent profile's onboarding fields current.
+        const onboarding = await startPostScreeningOnboarding(newMember);
+        if (onboarding.completed) {
+          const finalFlow = await completePostScreeningOnboarding(newMember);
+          if (finalFlow.completed) {
+            logger.info(
+              `Gateway passed — onboarding already complete; final member flow sent for ${newMember.user.tag} (${newMember.id}).`
+            );
+          }
           await updateProfile(newMember.guild.id, newMember.id, {
             server: {
-              welcomeDmStatus: intro.dmStatus,
-              devIntroStatus: intro.devIntroSent ? 'Sent' : 'Not sent',
+              welcomeDmStatus: finalFlow.dmStatus,
+              devIntroStatus: finalFlow.gatewayIntroSent ? 'Sent' : 'Not sent',
               verificationStatus: 'Passed gateway',
             },
+          }).catch(() => {});
+        } else {
+          logger.info(
+            `Gateway passed — onboarding started for ${newMember.user.tag} (${newMember.id}).`
+          );
+          await updateProfile(newMember.guild.id, newMember.id, {
+            server: { verificationStatus: 'Passed gateway; onboarding pending' },
           }).catch(() => {});
         }
       }

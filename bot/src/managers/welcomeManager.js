@@ -25,7 +25,6 @@ import { getSettings } from '../database/settingsStore.js';
 import { getTheme } from './themeManager.js';
 import { pickWelcomeGif, pickEmojiBurst, pickGuildSticker, LOADING_FRAMES } from './gifManager.js';
 import { brandIcon } from './brandingManager.js';
-import { buildInterestsMenu } from './onboardingManager.js';
 
 /** Delay between animation frames (ms). Keep >= 1500 to respect rate limits. */
 const FRAME_DELAY_MS = 2200;
@@ -204,12 +203,10 @@ export async function sendPublicWelcome(member) {
   const theme = getTheme(wc.theme);
   const gifUrl = pickWelcomeGif(member.guild.id, wc);
   const buttons = buildWelcomeButtons(member.guild, theme, wc);
-  const onboardingMenu = buildInterestsMenu(member.id);
-  logger.info(`Onboarding Interests menu prepared for ${member.user.tag} (${member.id}) in public welcome payload.`);
   const finalPayload = {
     content: `${member}`,
     embeds: [premiumWelcomeEmbed(member, theme, gifUrl)],
-    components: buttons ? [buttons, onboardingMenu] : [onboardingMenu],
+    ...(buttons ? { components: [buttons] } : {}),
   };
 
   try {
@@ -247,7 +244,7 @@ export async function sendPublicWelcome(member) {
     if (sticker) {
       await channel.send({ stickers: [sticker.id] }).catch(() => {});
     }
-    logger.info(`Public welcome with onboarding Interests menu sent for ${member.user.tag} (${member.id}).`);
+    logger.info(`Public welcome sent for ${member.user.tag} (${member.id}).`);
   } catch (error) {
     logger.warn(`Failed to send public welcome: ${error.message}`);
   }

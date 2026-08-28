@@ -355,6 +355,16 @@ export async function handleOnboardingInteraction(interaction) {
       content: onboardingResponseText(parsed.step, result.roleStatus, Boolean(result.profile), result.nextStep),
       ...(nextMenu ? { components: [nextMenu] } : { components: [] }),
     });
+
+    if (!result.nextStep && result.profile) {
+      const { completePostScreeningOnboarding } = await import('./introductionManager.js');
+      const finalFlow = await completePostScreeningOnboarding(member);
+      logger.info(
+        `Onboarding complete for ${member.guild.id}:${member.id}: ` +
+        `dmStatus=${finalFlow.dmStatus}, gatewayIntroduction=${finalFlow.gatewayIntroSent}, ` +
+        `chillZoneWelcome=${finalFlow.completed}.`
+      );
+    }
   } catch (error) {
     logger.warn(`Onboarding interaction failed for ${interaction.user.id}: ${error.message}`);
     await safeInteractionReply(interaction, { content: '⚠️ Onboarding could not be completed safely. Please try again.' });

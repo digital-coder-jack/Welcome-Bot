@@ -28,7 +28,8 @@ import { logger } from '../utils/logger.js';
 import { COLORS } from '../utils/embeds.js';
 import {
   registerPendingIntroduction,
-  sendMemberIntroduction,
+  startPostScreeningOnboarding,
+  completePostScreeningOnboarding,
 } from '../managers/introductionManager.js';
 import { accountAge, formatUTC } from '../utils/time.js';
 import { sendLog } from '../services/moderationService.js';
@@ -134,18 +135,21 @@ export default {
     }
 
     if (!isBot && !welcomesPaused) {
-      // --- Step 1: Member introduction (public welcome + DM + dev-intro) ---
-      // Membership Screening (Gateway) enabled → `member.pending` is true:
-      // NEVER send the introduction from guildMemberAdd. Register the member
-      // so guildMemberUpdate sends it exactly once after the Gateway is
-      // passed. Screening disabled → send it here, exactly once.
-      if (member.pending) {
+      // --- Step 1: Membership Screening → onboarding ---
+      // Pending members wait for guildMemberUpdate after passing Screening.
+      // Members without Screening start onboarding immediately.
+      if (member.pending === true) {
         registerPendingIntroduction(member);
         dmStatus = 'Deferred (membership screening)';
       } else {
-        const intro = await sendMemberIntroduction(member, { source: 'join' });
-        dmStatus = intro.dmStatus;
-        devIntroSent = intro.devIntroSent;
+        const onboarding = await startPostScreeningOnboarding(member);
+        if (onboarding.completed) {
+          const finalFlow = await completePostScreeningOnboarding(member);
+          dmStatus = finalFlow.dmStatus;
+          devIntroSent = finalFlow.gatewayIntroSent;
+        } else {
+          dmStatus = onboarding.started ? 'Onboarding pending' : 'Onboarding unavailable';
+        }
       }
 
       // --- Step 2: Assign the Forge Member role ---

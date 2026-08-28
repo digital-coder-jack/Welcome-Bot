@@ -62,11 +62,10 @@ try {
   await sendPublicWelcome(member);
   assert.equal(sentPayloads.length, 1);
   assert.equal(sentPayloads[0].embeds.length, 1);
-  assert.equal(sentPayloads[0].components.length, 2);
-  assert.equal(sentPayloads[0].components[1].toJSON().components[0].custom_id, 'onboarding:user-welcome:interests');
-  assert.equal(sentPayloads[0].components[1].toJSON().components[0].max_values, 12);
+  assert.equal(sentPayloads[0].components.length, 1);
+  assert.notEqual(sentPayloads[0].components[0].toJSON().components[0].custom_id, 'onboarding:user-welcome:interests');
 
-  console.log('PUBLIC_WELCOME_SENDS_ONBOARDING_MENU=PASS');
+  console.log('PUBLIC_WELCOME_REMAINS_CHILL_ZONE_ONLY=PASS');
   console.log('PUBLIC_WELCOME_EMBED_PRESERVED=PASS');
   console.log('PUBLIC_WELCOME_EXISTING_BUTTON_ROW_PRESERVED=PASS');
 } finally {

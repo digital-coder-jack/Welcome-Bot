@@ -104,6 +104,7 @@ export const config = Object.freeze({
   // --- Channels & roles ---
   channels: Object.freeze({
     welcome: envStr('WELCOME_CHANNEL_ID'),
+    gateway: envStr('GATEWAY_CHANNEL_ID'),
     goodbye: envStr('GOODBYE_CHANNEL_ID'),
     log: envStr('LOG_CHANNEL_ID'),
     devIntro: envStr('DEV_INTRO_CHANNEL_ID') || envStr('DEVINTRO_CHANNEL_ID'),
