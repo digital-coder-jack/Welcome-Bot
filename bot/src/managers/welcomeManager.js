@@ -182,7 +182,13 @@ function animationFrame(member, theme, gifUrl, step, headline, body) {
 export async function sendPublicWelcome(member) {
   const settings = await getSettings(member.guild.id);
   const wc = settings.welcome;
-  if (!wc.publicEnabled || !config.channels.welcome) return;
+  if (!wc.publicEnabled || !config.channels.welcome) {
+    logger.info(
+      `Public welcome/onboarding skipped for ${member.user.tag} (${member.id}): ` +
+      `publicEnabled=${Boolean(wc.publicEnabled)}, welcomeChannelConfigured=${Boolean(config.channels.welcome)}.`
+    );
+    return;
+  }
 
   let channel;
   try {
@@ -190,12 +196,16 @@ export async function sendPublicWelcome(member) {
   } catch {
     channel = null;
   }
-  if (!channel?.isTextBased()) return;
+  if (!channel?.isTextBased()) {
+    logger.warn(`Public welcome/onboarding skipped for ${member.user.tag} (${member.id}): welcome channel unavailable or not text-based.`);
+    return;
+  }
 
   const theme = getTheme(wc.theme);
   const gifUrl = pickWelcomeGif(member.guild.id, wc);
   const buttons = buildWelcomeButtons(member.guild, theme, wc);
   const onboardingMenu = buildInterestsMenu(member.id);
+  logger.info(`Onboarding Interests menu prepared for ${member.user.tag} (${member.id}) in public welcome payload.`);
   const finalPayload = {
     content: `${member}`,
     embeds: [premiumWelcomeEmbed(member, theme, gifUrl)],
@@ -237,6 +247,7 @@ export async function sendPublicWelcome(member) {
     if (sticker) {
       await channel.send({ stickers: [sticker.id] }).catch(() => {});
     }
+    logger.info(`Public welcome with onboarding Interests menu sent for ${member.user.tag} (${member.id}).`);
   } catch (error) {
     logger.warn(`Failed to send public welcome: ${error.message}`);
   }

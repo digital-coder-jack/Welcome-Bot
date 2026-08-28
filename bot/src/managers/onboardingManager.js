@@ -320,6 +320,7 @@ async function safeInteractionReply(interaction, payload) {
 export async function handleOnboardingInteraction(interaction) {
   const parsed = parseOnboardingCustomId(interaction.customId);
   if (!parsed) return false;
+  logger.info(`Onboarding interaction received: ${interaction.customId} from ${interaction.user.id}.`);
 
   if (interaction.user.id !== parsed.userId) {
     await safeInteractionReply(interaction, { content: 'This onboarding menu belongs to another member.' });
@@ -340,6 +341,10 @@ export async function handleOnboardingInteraction(interaction) {
     await interaction.deferUpdate();
     const member = await interaction.guild.members.fetch(interaction.user.id);
     const result = await applyOnboardingSelection(member, parsed.step, validation.values);
+    logger.info(
+      `Onboarding ${parsed.step} selection processed for ${member.guild.id}:${member.id}: ` +
+      `profileUpdated=${Boolean(result.profile)}, roleErrors=${result.roleStatus?.errors?.length ?? 0}.`
+    );
     if (!result.ok && !result.profile) {
       await interaction.editReply({ content: '⚠️ The onboarding selection could not be saved. Please try again.', components: [] });
       return true;
