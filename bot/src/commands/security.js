@@ -294,6 +294,12 @@ async function memberProfile(interaction) {
   const onboardingExperience = typeof onboarding.experience === 'string' && onboarding.experience.trim()
     ? onboarding.experience
     : 'Not selected';
+  const onboardingWork = typeof onboarding.workStatus === 'string' && onboarding.workStatus.trim()
+    ? onboarding.workStatus
+    : 'Not selected';
+  const onboardingGender = typeof onboarding.gender === 'string' && onboarding.gender.trim()
+    ? onboarding.gender
+    : 'Not selected';
 
   const serverLines = [
     `**Highest Role:** ${highestRole}`,
@@ -307,6 +313,8 @@ async function memberProfile(interaction) {
     `**🎯 Interests:** ${onboardingInterests}`,
     `**🎂 Age Group:** ${onboardingAgeGroup}`,
     `**📊 Experience:** ${onboardingExperience}`,
+    `**💼 Work:** ${onboardingWork}`,
+    `**⚧ Gender:** ${onboardingGender}`,
   ].join('\n');
 
   const m = profile.moderation;

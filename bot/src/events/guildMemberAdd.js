@@ -28,8 +28,7 @@ import { logger } from '../utils/logger.js';
 import { COLORS } from '../utils/embeds.js';
 import {
   registerPendingIntroduction,
-  startPostScreeningOnboarding,
-  completePostScreeningOnboarding,
+  completePostScreeningMemberFlow,
 } from '../managers/introductionManager.js';
 import { accountAge, formatUTC } from '../utils/time.js';
 import { sendLog } from '../services/moderationService.js';
@@ -42,6 +41,7 @@ import { trackJoinForRaid, isRaidModeActive } from '../security/raidManager.js';
 import { sendSecurityReport } from '../security/securityReport.js';
 import { isLockdownActive } from '../security/lockdownManager.js';
 import { syncProfileFromMember } from '../database/profileStore.js';
+import { syncNativeOnboardingFromMember } from '../database/nativeOnboardingSync.js';
 
 /**
  * Join dedupe guard — Discord's gateway can re-emit GuildMemberAdd for the
@@ -124,6 +124,12 @@ export default {
     let devIntroSent = false;
     let telegramSent = false;
     let databaseSaved = false;
+    let nativeOnboarding = {
+      interests: [],
+      experience: null,
+      workStatus: null,
+      gender: null,
+    };
 
     // During Raid Mode or manual Lockdown, welcomes are paused (safety);
     // everything else continues.
@@ -135,21 +141,16 @@ export default {
     }
 
     if (!isBot && !welcomesPaused) {
-      // --- Step 1: Membership Screening → onboarding ---
-      // Pending members wait for guildMemberUpdate after passing Screening.
-      // Members without Screening start onboarding immediately.
+      // Membership Screening still defers the existing welcome/introduction.
+      // Native Discord Server Onboarding is handled by Discord itself; this bot
+      // must not send a second onboarding UI into the Gateway channel.
       if (member.pending === true) {
         registerPendingIntroduction(member);
         dmStatus = 'Deferred (membership screening)';
       } else {
-        const onboarding = await startPostScreeningOnboarding(member);
-        if (onboarding.completed) {
-          const finalFlow = await completePostScreeningOnboarding(member);
-          dmStatus = finalFlow.dmStatus;
-          devIntroSent = finalFlow.gatewayIntroSent;
-        } else {
-          dmStatus = onboarding.started ? 'Onboarding pending' : 'Onboarding unavailable';
-        }
+        const finalFlow = await completePostScreeningMemberFlow(member);
+        dmStatus = finalFlow.dmStatus;
+        devIntroSent = finalFlow.gatewayIntroSent;
       }
 
       // --- Step 2: Assign the Forge Member role ---
@@ -167,6 +168,17 @@ export default {
           logger.warn(`Failed to assign Forge Member role: ${error.message}`);
         }
       }
+    }
+
+    // --- Phase 7: synchronize native Discord Onboarding outcomes ---
+    // Discord does not expose prompt answers as a GuildMember field. Native
+    // onboarding-assigned roles are the supported member-scoped signal, and
+    // only configured role IDs are mapped here.
+    try {
+      const nativeSync = await syncNativeOnboardingFromMember(member);
+      nativeOnboarding = nativeSync.selections;
+    } catch (error) {
+      logger.warn(`Failed to sync native onboarding data: ${error.message}`);
     }
 
     // --- Step 3: Telegram join notification via the backend ---
@@ -187,6 +199,10 @@ export default {
         assigned_role: assignedRole,
         dm_status: dmStatus,
         server_invite_used: invite.url,
+        interests: nativeOnboarding.interests,
+        experience: nativeOnboarding.experience,
+        work_status: nativeOnboarding.workStatus,
+        gender: nativeOnboarding.gender,
       });
     } catch (error) {
       logger.warn(`Telegram join notification failed: ${error.message}`);

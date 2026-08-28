@@ -38,6 +38,10 @@ class MemberJoinedPayload(BaseModel):
     assigned_role: str = Field("None", description="Role auto-assigned on join.")
     dm_status: str = Field("Unknown", description="Whether the welcome DM was delivered.")
     server_invite_used: str = Field("Unknown", description="Full invite URL that was used.")
+    interests: list[str] = Field(default_factory=list, description="Native Discord onboarding interests.")
+    experience: Optional[str] = Field(None, description="Native Discord onboarding experience.")
+    work_status: Optional[str] = Field(None, description="Native Discord onboarding work status.")
+    gender: Optional[str] = Field(None, description="Native Discord onboarding gender.")
 
 
 class MemberLeftPayload(BaseModel):

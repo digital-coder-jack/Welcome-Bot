@@ -23,7 +23,7 @@
  *               previousJoins, previousLeaves, rejoinCount, reputation
  *   activity:   messageCount, voiceMinutes, attachmentsSent, linksShared,
  *               lastSeen
- *   onboarding: interests[], ageGroup, experience
+ *   onboarding: interests[], ageGroup, experience, workStatus, gender
  *
  * Activity counters are flushed lazily (debounced by jsonStore) so hot paths
  * (messageCreate) stay cheap. All functions are fail-safe.
@@ -61,6 +61,19 @@ export const ONBOARDING_EXPERIENCE_LEVELS = Object.freeze([
   'Intermediate',
   'Advanced',
   'Expert',
+]);
+
+export const ONBOARDING_WORK_STATUSES = Object.freeze([
+  'Freelancer',
+  'Startup / Business',
+  'Company / MNC',
+  'Prefer not to say',
+]);
+
+export const ONBOARDING_GENDERS = Object.freeze([
+  'Male',
+  'Female',
+  'Prefer not to say',
 ]);
 
 function key(guildId, userId) {
@@ -129,6 +142,8 @@ export function emptyProfile(guildId, userId) {
       interests: [],
       ageGroup: null,
       experience: null,
+      workStatus: null,
+      gender: null,
     },
     updatedAt: null,
   };
@@ -233,6 +248,8 @@ export async function bumpProfile(guildId, userId, section, field, by = 1) {
  * @param {string[]} [data.interests]  Multiple selections.
  * @param {string|null} [data.ageGroup]  One selection.
  * @param {string|null} [data.experience]  One selection.
+ * @param {string|null} [data.workStatus]  One selection.
+ * @param {string|null} [data.gender]  One selection.
  * @returns {Promise<object|null>} the updated profile.
  */
 export async function updateOnboardingData(guildId, userId, data) {
@@ -253,6 +270,18 @@ export async function updateOnboardingData(guildId, userId, data) {
       data.experience === null || ONBOARDING_EXPERIENCE_LEVELS.includes(data.experience)
         ? data.experience
         : null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, 'workStatus')) {
+    onboarding.workStatus =
+      data.workStatus === null || ONBOARDING_WORK_STATUSES.includes(data.workStatus)
+        ? data.workStatus
+        : null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, 'gender')) {
+    onboarding.gender =
+      data.gender === null || ONBOARDING_GENDERS.includes(data.gender) ? data.gender : null;
   }
 
   return updateProfile(guildId, userId, { onboarding });

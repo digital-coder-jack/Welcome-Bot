@@ -30,11 +30,11 @@ import { detectRoleAbuse } from '../security/advancedProtection.js';
 import { logSecurityEvent } from '../security/securityLogger.js';
 import { reportSecurityEvent } from '../services/securityService.js';
 import { updateProfile } from '../database/profileStore.js';
+import { syncNativeOnboardingFromMember } from '../database/nativeOnboardingSync.js';
 import { config } from '../config.js';
 import {
   shouldSendGatewayIntroduction,
-  startPostScreeningOnboarding,
-  completePostScreeningOnboarding,
+  completePostScreeningMemberFlow,
 } from '../managers/introductionManager.js';
 
 export default {
@@ -50,32 +50,27 @@ export default {
     //     after the member passes the Gateway (best-effort, never throws) ---
     try {
       if (shouldSendGatewayIntroduction(oldMember, newMember)) {
-        const onboarding = await startPostScreeningOnboarding(newMember);
-        if (onboarding.completed) {
-          const finalFlow = await completePostScreeningOnboarding(newMember);
-          if (finalFlow.completed) {
-            logger.info(
-              `Gateway passed — onboarding already complete; final member flow sent for ${newMember.user.tag} (${newMember.id}).`
-            );
-          }
-          await updateProfile(newMember.guild.id, newMember.id, {
-            server: {
-              welcomeDmStatus: finalFlow.dmStatus,
-              devIntroStatus: finalFlow.gatewayIntroSent ? 'Sent' : 'Not sent',
-              verificationStatus: 'Passed gateway',
-            },
-          }).catch(() => {});
-        } else {
-          logger.info(
-            `Gateway passed — onboarding started for ${newMember.user.tag} (${newMember.id}).`
-          );
-          await updateProfile(newMember.guild.id, newMember.id, {
-            server: { verificationStatus: 'Passed gateway; onboarding pending' },
-          }).catch(() => {});
-        }
+        const finalFlow = await completePostScreeningMemberFlow(newMember);
+        logger.info(
+          `Gateway passed — existing member flow sent for ${newMember.user.tag} (${newMember.id}).`
+        );
+        await updateProfile(newMember.guild.id, newMember.id, {
+          server: {
+            welcomeDmStatus: finalFlow.dmStatus,
+            devIntroStatus: finalFlow.gatewayIntroSent ? 'Sent' : 'Not sent',
+            verificationStatus: 'Passed gateway',
+          },
+        }).catch(() => {});
       }
     } catch (error) {
       logger.warn(`Gateway introduction dispatch failed: ${error.message}`);
+    }
+
+    // --- Phase 7: sync native Discord Onboarding outcomes (best-effort) ---
+    try {
+      await syncNativeOnboardingFromMember(newMember);
+    } catch (error) {
+      logger.debug(`Native onboarding profile sync failed: ${error.message}`);
     }
 
     // --- Phase 7: keep profile roles/nickname in sync (best-effort) ---

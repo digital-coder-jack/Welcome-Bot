@@ -129,6 +129,8 @@ export const config = Object.freeze({
       interests: envRoleMap('ONBOARDING_INTEREST_ROLE_IDS'),
       ageGroups: envRoleMap('ONBOARDING_AGE_ROLE_IDS'),
       experience: envRoleMap('ONBOARDING_EXPERIENCE_ROLE_IDS'),
+      workStatus: envRoleMap('ONBOARDING_WORK_ROLE_IDS'),
+      gender: envRoleMap('ONBOARDING_GENDER_ROLE_IDS'),
     }),
   }),
 

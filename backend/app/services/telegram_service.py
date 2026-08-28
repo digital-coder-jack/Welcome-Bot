@@ -157,6 +157,10 @@ class TelegramService:
             f"🎭 <b>Assigned Role:</b> {_esc(data.assigned_role)}",
             f"✉️ <b>DM Status:</b> {_esc(data.dm_status)}",
             f"📨 <b>Server Invite Used:</b> {_esc(data.server_invite_used)}",
+            f"🎯 <b>Interests:</b> {_esc(', '.join(data.interests) if data.interests else 'Not selected')}",
+            f"⚙️ <b>Experience:</b> {_esc(data.experience or 'Not selected')}",
+            f"💼 <b>Work:</b> {_esc(data.work_status or 'Not selected')}",
+            f"⚧ <b>Gender:</b> {_esc(data.gender or 'Not selected')}",
             "━━━━━━━━━━━━━━━━━━━━",
         ]
         if data.avatar_url:

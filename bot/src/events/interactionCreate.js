@@ -11,7 +11,6 @@ import { Events, MessageFlags } from 'discord.js';
 import { logger } from '../utils/logger.js';
 import { handlePanelInteraction, PANEL_PREFIX } from '../managers/approvalSystem.js';
 import { handleSecurityAlertInteraction, SECURITY_PREFIX } from '../security/securityAlerts.js';
-import { handleOnboardingInteraction, ONBOARDING_PREFIX } from '../managers/onboardingManager.js';
 
 export default {
   name: Events.InteractionCreate,
@@ -60,24 +59,6 @@ export default {
       return;
     }
 
-    // --- Discord onboarding select menus ---
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith(`${ONBOARDING_PREFIX}:`)) {
-      try {
-        await handleOnboardingInteraction(interaction);
-      } catch (error) {
-        logger.error(`Onboarding interaction failed: ${error.stack || error}`);
-        const errorReply = {
-          content: '⚠️ Something went wrong while saving your onboarding selection.',
-          flags: MessageFlags.Ephemeral,
-        };
-        if (interaction.replied || interaction.deferred) {
-          await interaction.followUp(errorReply).catch(() => {});
-        } else {
-          await interaction.reply(errorReply).catch(() => {});
-        }
-      }
-      return;
-    }
 
     if (!interaction.isChatInputCommand()) return;
 

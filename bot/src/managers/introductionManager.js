@@ -1,19 +1,20 @@
 /**
  * managers/introductionManager.js
  * ---------------------------------------------------------------------------
- * Single source of truth for the member introduction (onboarding) flow.
+ * Single source of truth for the member introduction flow after Discord
+ * Membership Screening. Discord native Server Onboarding is handled by Discord,
+ * not by this module.
  *
  * Exactly ONE introduction per member — never duplicates:
  *
  *   • Membership Screening (Gateway) ENABLED  → member joins with
  *     `member.pending === true`. guildMemberAdd registers the member here
- *     and sends NOTHING. The introduction fires once, from
- *     guildMemberUpdate, the moment the member passes the Gateway
- *     (pending: true → false).
+ *     and sends NOTHING. The existing introduction fires once, from
+ *     guildMemberUpdate, when the member passes the Gateway.
  *
  *   • Membership Screening DISABLED → member joins with
- *     `member.pending === false`. guildMemberAdd sends the introduction
- *     immediately, exactly as before.
+ *     `member.pending === false`. guildMemberAdd sends the existing
+ *     introduction immediately, exactly once.
  *
  * A TTL'd dedupe registry guarantees the introduction can never fire twice
  * for the same member+join, regardless of gateway re-emits, partial-member
@@ -35,8 +36,6 @@ import { logger } from '../utils/logger.js';
 import { devIntroEmbed } from '../utils/embeds.js';
 import { sendPublicWelcome } from './welcomeManager.js';
 import { sendWelcomeDM } from './dmManager.js';
-import { buildStepMenu } from './onboardingManager.js';
-import { getProfile } from '../database/profileStore.js';
 import { isRaidModeActive } from '../security/raidManager.js';
 import { isLockdownActive } from '../security/lockdownManager.js';
 
@@ -66,12 +65,6 @@ const deliveredWelcomeDMs = new Map();
  * @type {Map<string, number>} key = `${guildId}:${userId}`, value = expiry ts.
  */
 const awaitingScreening = new Map();
-
-/**
- * Members whose post-screening onboarding menu has been sent.
- * @type {Map<string, number>} key = `${guildId}:${userId}`, value = expiry ts.
- */
-const onboardingStarted = new Map();
 
 /** @param {Map<string, number>} map  Evict expired entries in place. */
 function evictExpired(map) {
@@ -131,56 +124,6 @@ export function shouldSendGatewayIntroduction(oldMember, newMember) {
   return !oldMember.partial && oldMember.pending === true;
 }
 
-function onboardingComplete(profile) {
-  const onboarding = profile?.onboarding;
-  return Boolean(
-    onboarding &&
-    Array.isArray(onboarding.interests) &&
-    onboarding.ageGroup &&
-    onboarding.experience
-  );
-}
-
-/**
- * Show the first onboarding menu in the dedicated Gateway channel after the
- * member has passed Membership Screening. This is intentionally separate from
- * the Chill Zone public welcome channel.
- *
- * @param {import('discord.js').GuildMember} member
- * @returns {Promise<{started: boolean, completed: boolean}>}
- */
-export async function startPostScreeningOnboarding(member) {
-  const key = keyOf(member.guild.id, member.id);
-  evictExpired(onboardingStarted);
-
-  if (onboardingComplete(await getProfile(member.guild.id, member.id))) {
-    return { started: false, completed: true };
-  }
-  if (onboardingStarted.has(key)) return { started: false, completed: false };
-  if (!config.channels.gateway) {
-    logger.warn(`Onboarding skipped for ${member.user.tag} (${member.id}): GATEWAY_CHANNEL_ID is not configured.`);
-    return { started: false, completed: false };
-  }
-
-  try {
-    const channel = await member.guild.channels.fetch(config.channels.gateway);
-    if (!channel?.isTextBased()) {
-      logger.warn(`Onboarding skipped for ${member.user.tag} (${member.id}): Gateway channel unavailable or not text-based.`);
-      return { started: false, completed: false };
-    }
-    await channel.send({
-      content: `${member} — please complete your onboarding before entering the community.`,
-      components: [buildStepMenu(member.id, 'interests')],
-    });
-    onboardingStarted.set(key, Date.now() + AWAITING_TTL_MS);
-    logger.info(`Onboarding menus sent to Gateway channel for ${member.user.tag} (${member.id}).`);
-    return { started: true, completed: false };
-  } catch (error) {
-    logger.warn(`Failed to send onboarding menus for ${member.user.tag}: ${error.message}`);
-    return { started: false, completed: false };
-  }
-}
-
 async function sendGatewayIntroduction(member) {
   if (!config.channels.gateway) {
     logger.warn(`Gateway introduction skipped for ${member.user.tag} (${member.id}): GATEWAY_CHANNEL_ID is not configured.`);
@@ -205,15 +148,13 @@ async function sendGatewayIntroduction(member) {
  * @param {import('discord.js').GuildMember} member
  * @returns {Promise<{completed: boolean, dmStatus: string, gatewayIntroSent: boolean}>}
  */
-export async function completePostScreeningOnboarding(member) {
+export async function completePostScreeningMemberFlow(member) {
   const result = { completed: false, dmStatus: 'Not attempted', gatewayIntroSent: false };
   if (member.user.bot) return result;
 
   evictExpired(introducedMembers);
   evictExpired(deliveredWelcomeDMs);
   const key = keyOf(member.guild.id, member.id);
-  if (!onboardingComplete(await getProfile(member.guild.id, member.id))) return result;
-
   if (introducedMembers.has(key)) {
     if (deliveredWelcomeDMs.has(key)) {
       result.dmStatus = 'Skipped (already introduced)';
