@@ -109,7 +109,7 @@ try {
 
   await updateOnboardingData('guild-1', 'user-1', {
     interests: ['Programmer'],
-    ageGroup: '16–17',
+    ageGroup: '18-',
     experience: 'Advanced',
   });
   const latestInteraction = interactionFor(targetUser);
@@ -117,7 +117,7 @@ try {
   const latestLines = serverLinesFrom(latestInteraction);
   assert.deepEqual(latestLines.slice(8), [
     '**🎯 Interests:** Programmer',
-    '**🎂 Age Group:** 16–17',
+    '**🎂 Age Group:** 18-',
     '**📊 Experience:** Advanced',
   ]);
 
@@ -139,7 +139,7 @@ try {
   const persisted = JSON.parse(await readFile(profileFile, 'utf8'));
   assert.deepEqual(persisted['guild-1:user-1'].onboarding, {
     interests: ['Programmer'],
-    ageGroup: '16–17',
+    ageGroup: '18-',
     experience: 'Advanced',
   });
   assert.equal(persisted['guild-1:user-legacy'].identity.username, 'legacy-user');

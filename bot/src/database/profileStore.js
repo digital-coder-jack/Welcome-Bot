@@ -51,9 +51,7 @@ export const ONBOARDING_INTERESTS = Object.freeze([
 ]);
 
 export const ONBOARDING_AGE_GROUPS = Object.freeze([
-  'Under 13',
-  '13–15',
-  '16–17',
+  '18-',
   '18+',
   'Prefer not to say',
 ]);

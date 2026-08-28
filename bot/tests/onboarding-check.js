@@ -35,7 +35,7 @@ try {
 
   process.env.ONBOARDING_INTEREST_ROLE_IDS =
     'Cyber Security=interest-cyber,AI Enthusiast=interest-ai,Programmer=interest-programmer';
-  process.env.ONBOARDING_AGE_ROLE_IDS = 'Under 13=age-under-13,13–15=age-13-15,18+=age-18';
+  process.env.ONBOARDING_AGE_ROLE_IDS = '18-=age-under-18,18+=age-18,Prefer not to say=age-prefer-not-to-say';
   process.env.ONBOARDING_EXPERIENCE_ROLE_IDS = 'Beginner=exp-beginner,Expert=exp-expert';
 
   const manager = await import('../src/managers/onboardingManager.js');
@@ -62,7 +62,8 @@ try {
   assert.equal(ageMenu.custom_id, 'onboarding:user-1:age');
   assert.equal(ageMenu.min_values, 1);
   assert.equal(ageMenu.max_values, 1);
-  assert.deepEqual(ageMenu.options.map((option) => option.label), ['Under 13', '13–15', '16–17', '18+', 'Prefer not to say']);
+  assert.deepEqual(ageMenu.options.map((option) => option.label), ['18-', '18+', 'Prefer not to say']);
+  assert.deepEqual(ageMenu.options.map((option) => option.emoji.name), ['🔞', '🔓', '🤐']);
 
   const experienceMenu = manager.buildExperienceMenu('user-1').toJSON().components[0];
   assert.equal(experienceMenu.custom_id, 'onboarding:user-1:experience');
@@ -75,7 +76,7 @@ try {
   assert.equal(manager.validateStepValues('interests', []).valid, true);
   assert.equal(manager.validateStepValues('interests', ['Not Allowed']).valid, false);
   assert.equal(manager.validateStepValues('age', ['18+']).valid, true);
-  assert.equal(manager.validateStepValues('age', ['18+', '16–17']).valid, false);
+  assert.equal(manager.validateStepValues('age', ['18+', '18-']).valid, false);
   assert.equal(manager.validateStepValues('experience', ['Expert']).valid, true);
 
   const roleCalls = [];
@@ -85,8 +86,8 @@ try {
       cache: new Map([
         ['guild-1', { id: 'guild-1', name: '@everyone' }],
         ['interest-cyber', { id: 'interest-cyber', name: 'Cyber Security' }],
-        ['age-under-13', { id: 'age-under-13', name: 'Under 13' }],
-        ['age-13-15', { id: 'age-13-15', name: '13–15' }],
+        ['age-under-18', { id: 'age-under-18', name: '18-' }],
+        ['age-prefer-not-to-say', { id: 'age-prefer-not-to-say', name: 'Prefer not to say' }],
         ['admin-role', { id: 'admin-role', name: 'Administrator' }],
         ['staff-role', { id: 'staff-role', name: 'Staff' }],
       ]),
@@ -104,9 +105,9 @@ try {
             'interest-cyber': { id: 'interest-cyber', name: 'Cyber Security' },
             'interest-ai': { id: 'interest-ai', name: 'AI Enthusiast' },
             'interest-programmer': { id: 'interest-programmer', name: 'Programmer' },
-            'age-under-13': { id: 'age-under-13', name: 'Under 13' },
-            'age-13-15': { id: 'age-13-15', name: '13–15' },
+            'age-under-18': { id: 'age-under-18', name: '18-' },
             'age-18': { id: 'age-18', name: '18+' },
+            'age-prefer-not-to-say': { id: 'age-prefer-not-to-say', name: 'Prefer not to say' },
             'exp-beginner': { id: 'exp-beginner', name: 'Beginner' },
             'exp-expert': { id: 'exp-expert', name: 'Expert' },
           };
@@ -118,19 +119,19 @@ try {
 
   const interestDiff = manager.managedRoleChanges(
     'interests',
-    { interests: ['Cyber Security'], ageGroup: 'Under 13', experience: null },
-    { interests: ['AI Enthusiast'], ageGroup: 'Under 13', experience: null },
+    { interests: ['Cyber Security'], ageGroup: '18-', experience: null },
+    { interests: ['AI Enthusiast'], ageGroup: '18-', experience: null },
   );
   assert.deepEqual(interestDiff.add, ['interest-ai']);
   assert.deepEqual(interestDiff.remove, ['interest-cyber']);
 
   const ageDiff = manager.managedRoleChanges(
     'age',
-    { interests: ['Cyber Security'], ageGroup: 'Under 13', experience: 'Beginner' },
+    { interests: ['Cyber Security'], ageGroup: '18-', experience: 'Beginner' },
     { interests: ['Cyber Security'], ageGroup: '18+', experience: 'Beginner' },
   );
   assert.deepEqual(ageDiff.add, ['age-18']);
-  assert.deepEqual(ageDiff.remove, ['age-under-13']);
+  assert.deepEqual(ageDiff.remove, ['age-under-18']);
   assert(!ageDiff.remove.includes('admin-role'));
   assert(!ageDiff.remove.includes('staff-role'));
 
@@ -160,10 +161,10 @@ try {
   assert.equal(first.identity.username, 'legacy-user');
   assert.equal(first.activity.messageCount, 4);
 
-  const second = await profileStore.updateOnboardingData('guild-1', 'user-1', { ageGroup: '16–17' });
+  const second = await profileStore.updateOnboardingData('guild-1', 'user-1', { ageGroup: '18-' });
   assert.deepEqual(second.onboarding, {
     interests: ['Cyber Security', 'AI Enthusiast'],
-    ageGroup: '16–17',
+    ageGroup: '18-',
     experience: 'Expert',
   });
 
@@ -175,7 +176,7 @@ try {
   assert.equal(other.guildId, 'guild-2');
   assert.equal(other.userId, 'user-2');
 
-  await profileStore.updateOnboardingData('guild-1', 'user-1', { ageGroup: 'Under 13' });
+  await profileStore.updateOnboardingData('guild-1', 'user-1', { ageGroup: '18-' });
   const { default: interactionEvent } = await import('../src/events/interactionCreate.js');
   const makeRoutedInteraction = (step, values) => ({
     customId: `onboarding:user-1:${step}`,
@@ -205,8 +206,8 @@ try {
   const ageInteraction = makeRoutedInteraction('age', ['18+']);
   await interactionEvent.execute(ageInteraction, { commands: new Map() });
   assert.deepEqual(roleCalls, [
-    { action: 'remove', roleId: 'age-under-13' },
-    { action: 'remove', roleId: 'age-13-15' },
+    { action: 'remove', roleId: 'age-under-18' },
+    { action: 'remove', roleId: 'age-prefer-not-to-say' },
     { action: 'add', roleId: 'age-18' },
   ]);
   assert.equal(ageInteraction.editPayload.components[0].components[0].data.custom_id, 'onboarding:user-1:experience');

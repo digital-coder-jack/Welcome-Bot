@@ -47,11 +47,9 @@ const INTEREST_OPTIONS = Object.freeze([
 ]);
 
 const AGE_OPTIONS = Object.freeze([
-  { label: 'Under 13', value: 'Under 13' },
-  { label: '13–15', value: '13–15' },
-  { label: '16–17', value: '16–17' },
-  { label: '18+', value: '18+' },
-  { label: 'Prefer not to say', value: 'Prefer not to say' },
+  { label: '18-', value: '18-', emoji: '🔞' },
+  { label: '18+', value: '18+', emoji: '🔓' },
+  { label: 'Prefer not to say', value: 'Prefer not to say', emoji: '🤐' },
 ]);
 
 const EXPERIENCE_OPTIONS = Object.freeze([
