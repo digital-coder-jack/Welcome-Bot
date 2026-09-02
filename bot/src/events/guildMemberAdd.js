@@ -35,7 +35,7 @@ import { sendLog } from '../services/moderationService.js';
 import { notifyMemberJoined } from '../services/telegramClient.js';
 import { resolveUsedInvite } from '../services/inviteTracker.js';
 import { trackJoinForSecurity } from '../services/securityService.js';
-import { saveMember } from '../database/memberStore.js';
+import { isDuplicateActiveJoin, saveMember } from '../database/memberStore.js';
 import { runJoinScan } from '../security/joinScan.js';
 import { trackJoinForRaid, isRaidModeActive } from '../security/raidManager.js';
 import { sendSecurityReport } from '../security/securityReport.js';
@@ -83,8 +83,12 @@ export default {
   async execute(member) {
     const isBot = member.user.bot;
 
-    // Ignore duplicate join events (gateway re-emits) — guarantees exactly
-    // ONE welcome, ONE DM and ONE dev-intro message per member per join.
+    // Ignore duplicate join events (gateway re-emits or a bot restart). The
+    // persistent record is checked first; the in-memory guard covers races.
+    if (await isDuplicateActiveJoin(member.guild.id, member.id, member.joinedTimestamp)) {
+      logger.warn(`Persistent duplicate GuildMemberAdd ignored for ${member.user.tag} (${member.id}).`);
+      return;
+    }
     if (isDuplicateJoin(member.guild.id, member.id)) {
       logger.warn(`Duplicate GuildMemberAdd ignored for ${member.user.tag} (${member.id}).`);
       return;
@@ -267,6 +271,8 @@ export default {
         { name: 'Account Age', value: accountAge(member.user.createdTimestamp), inline: true },
         { name: 'Type', value: isBot ? 'Bot' : 'Human', inline: true },
         { name: 'DM Status', value: dmStatus, inline: true },
+        { name: 'Onboarding', value: member.pending === true ? 'Pending' : 'Completed / not required', inline: true },
+        { name: 'Default Role', value: assignedRole, inline: true },
         ...(scan
           ? [{ name: 'Risk Score', value: `${scan.riskScore}/100 (${scan.threatLevel})`, inline: true }]
           : []),

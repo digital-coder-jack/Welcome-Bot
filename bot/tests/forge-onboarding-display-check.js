@@ -105,6 +105,8 @@ try {
     '**🎯 Interests:** Cyber Security, AI Enthusiast',
     '**🎂 Age Group:** 18+',
     '**📊 Experience:** Expert',
+    '**💼 Work:** Not selected',
+    '**⚧ Gender:** Not selected',
   ]);
 
   await updateOnboardingData('guild-1', 'user-1', {
@@ -119,6 +121,8 @@ try {
     '**🎯 Interests:** Programmer',
     '**🎂 Age Group:** 18-',
     '**📊 Experience:** Advanced',
+    '**💼 Work:** Not selected',
+    '**⚧ Gender:** Not selected',
   ]);
 
   const legacyUser = {
@@ -133,6 +137,8 @@ try {
     '**🎯 Interests:** Not selected',
     '**🎂 Age Group:** Not selected',
     '**📊 Experience:** Not selected',
+    '**💼 Work:** Not selected',
+    '**⚧ Gender:** Not selected',
   ]);
 
   await new Promise((resolve) => setTimeout(resolve, 400));
@@ -141,6 +147,8 @@ try {
     interests: ['Programmer'],
     ageGroup: '18-',
     experience: 'Advanced',
+    workStatus: null,
+    gender: null,
   });
   assert.equal(persisted['guild-1:user-legacy'].identity.username, 'legacy-user');
 

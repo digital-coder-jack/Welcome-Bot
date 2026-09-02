@@ -45,13 +45,13 @@ export function buildWelcomeButtons(guild, theme, welcomeSettings) {
   const row = new ActionRowBuilder();
   const channelLink = (channelId) => `https://discord.com/channels/${guild.id}/${channelId}`;
 
-  if (config.channels.rules || config.channels.welcome) {
+  if (config.channels.rules) {
     row.addComponents(
       new ButtonBuilder()
         .setLabel('Rules')
         .setEmoji(theme.buttons.rules)
         .setStyle(ButtonStyle.Link)
-        .setURL(channelLink(config.channels.rules || config.channels.welcome))
+        .setURL(channelLink(config.channels.rules))
     );
   }
   if (config.channels.devIntro) {
@@ -63,13 +63,22 @@ export function buildWelcomeButtons(guild, theme, welcomeSettings) {
         .setURL(channelLink(config.channels.devIntro))
     );
   }
-  if (config.channels.community || config.channels.welcome) {
+  if (config.channels.community) {
     row.addComponents(
       new ButtonBuilder()
         .setLabel('Community')
         .setEmoji(theme.buttons.community)
         .setStyle(ButtonStyle.Link)
-        .setURL(channelLink(config.channels.community || config.channels.welcome))
+        .setURL(channelLink(config.channels.community))
+    );
+  }
+  if (config.channels.support) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setLabel('Support')
+        .setEmoji('🛟')
+        .setStyle(ButtonStyle.Link)
+        .setURL(channelLink(config.channels.support))
     );
   }
   if (welcomeSettings.websiteUrl && /^https?:\/\//i.test(welcomeSettings.websiteUrl)) {

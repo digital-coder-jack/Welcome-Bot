@@ -121,12 +121,27 @@ export async function getMember(guildId, userId) {
 }
 
 /**
+ * Restart-safe duplicate guard for a still-active join event. A rejoin has a
+ * different joinedAt value or a prior leftAt marker and is therefore allowed.
+ */
+export async function isDuplicateActiveJoin(guildId, userId, joinedAt) {
+  if (!joinedAt) return false;
+  const record = await getMember(guildId, userId);
+  return Boolean(record && !record.leftAt && record.joinedAt === new Date(joinedAt).toISOString());
+}
+
+/**
  * Mark a member as having left the server (keeps the record for history).
  * @param {string} guildId
  * @param {string} userId
  * @param {string} leftAt  ISO timestamp
  * @returns {Promise<object|null>} the updated record, if it existed.
  */
+export async function isAlreadyMarkedLeft(guildId, userId) {
+  const record = await getMember(guildId, userId);
+  return Boolean(record?.leftAt);
+}
+
 export async function markMemberLeft(guildId, userId, leftAt) {
   const store = await load();
   const k = key(guildId, userId);

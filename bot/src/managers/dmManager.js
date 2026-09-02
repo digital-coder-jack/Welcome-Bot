@@ -85,13 +85,13 @@ function buildDMButtons(guild, welcomeSettings) {
   const buttons = [];
   const channelLink = (channelId) => `https://discord.com/channels/${guild.id}/${channelId}`;
 
-  if (config.channels.rules || config.channels.welcome) {
+  if (config.channels.rules) {
     buttons.push(
       new ButtonBuilder()
         .setLabel('Rules')
         .setEmoji('📖')
         .setStyle(ButtonStyle.Link)
-        .setURL(channelLink(config.channels.rules || config.channels.welcome))
+        .setURL(channelLink(config.channels.rules))
     );
   }
   // 👋 Introduce Yourself — STRICTLY the dev-intro channel. No fallback:
@@ -115,13 +115,13 @@ function buildDMButtons(guild, welcomeSettings) {
         .setURL(channelLink(config.channels.rolesPicker))
     );
   }
-  if (config.channels.community || config.channels.welcome) {
+  if (config.channels.community) {
     buttons.push(
       new ButtonBuilder()
         .setLabel('Community')
         .setEmoji('💬')
         .setStyle(ButtonStyle.Link)
-        .setURL(channelLink(config.channels.community || config.channels.welcome))
+        .setURL(channelLink(config.channels.community))
     );
   }
   if (config.channels.support || config.channels.log) {

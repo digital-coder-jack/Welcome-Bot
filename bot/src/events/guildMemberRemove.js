@@ -26,7 +26,7 @@ import { COLORS, goodbyeEmbed } from '../utils/embeds.js';
 import { formatDuration, formatUTC } from '../utils/time.js';
 import { sendLog } from '../services/moderationService.js';
 import { notifyMemberLeft } from '../services/telegramClient.js';
-import { markMemberLeft } from '../database/memberStore.js';
+import { isAlreadyMarkedLeft, markMemberLeft } from '../database/memberStore.js';
 import { getProfile } from '../database/profileStore.js';
 import { recordLeave } from '../database/securityStore.js';
 import { classifyDeparture, sendFarewellDM } from '../managers/farewellManager.js';
@@ -40,6 +40,10 @@ export default {
    */
   async execute(member) {
     if (member.user?.bot) return;
+    if (await isAlreadyMarkedLeft(member.guild.id, member.id)) {
+      logger.warn(`Duplicate GuildMemberRemove ignored for ${member.user?.tag ?? member.id}.`);
+      return;
+    }
 
     logger.info(`Member left: ${member.user?.tag ?? member.id}.`);
 
@@ -97,6 +101,7 @@ export default {
         .join(', ') || 'None';
     const storedProfile = await getProfile(member.guild.id, member.id);
     const onboarding = storedProfile.onboarding ?? {};
+    const defaultRoleName = member.roles?.cache?.get(config.roles.forgeMember)?.name ?? 'Not assigned';
 
     // 4. Telegram member-left notification via the backend.
     try {
@@ -115,7 +120,7 @@ export default {
         experience: onboarding.experience ?? null,
         work_status: onboarding.workStatus ?? null,
         gender: onboarding.gender ?? null,
-        default_role: 'Forge-Members',
+        default_role: defaultRoleName,
       });
     } catch (error) {
       logger.warn(`Telegram leave notification failed: ${error.message}`);
@@ -148,6 +153,9 @@ export default {
           inline: true,
         },
         { name: 'Members Now', value: `${member.guild.memberCount}`, inline: true },
+        { name: 'Joined', value: joinedTimestamp ? formatUTC(joinedTimestamp) : 'Unknown', inline: true },
+        { name: 'Left', value: formatUTC(now), inline: true },
+        { name: 'Departure', value: departureType, inline: true },
       ],
     });
   },
