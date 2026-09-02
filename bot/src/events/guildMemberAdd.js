@@ -42,6 +42,7 @@ import { sendSecurityReport } from '../security/securityReport.js';
 import { isLockdownActive } from '../security/lockdownManager.js';
 import { syncProfileFromMember } from '../database/profileStore.js';
 import { syncNativeOnboardingFromMember } from '../database/nativeOnboardingSync.js';
+import { assignForgeMemberRole } from '../services/forgeMemberRole.js';
 
 /**
  * Join dedupe guard — Discord's gateway can re-emit GuildMemberAdd for the
@@ -153,21 +154,9 @@ export default {
         devIntroSent = finalFlow.gatewayIntroSent;
       }
 
-      // --- Step 2: Assign the Forge Member role ---
-      if (config.roles.forgeMember) {
-        try {
-          const role = await member.guild.roles.fetch(config.roles.forgeMember);
-          if (role) {
-            await member.roles.add(role, 'Auto-assigned Forge Member role on join.');
-            assignedRole = role.name;
-            logger.debug(`Assigned ${role.name} role to ${member.user.tag}.`);
-          } else {
-            logger.warn('FORGE_MEMBER_ROLE_ID configured but role not found.');
-          }
-        } catch (error) {
-          logger.warn(`Failed to assign Forge Member role: ${error.message}`);
-        }
-      }
+      // Assign the default role only after the member has completed the
+      // required screening flow. It is never treated as an answer.
+      assignedRole = await assignForgeMemberRole(member);
     }
 
     // --- Phase 7: synchronize native Discord Onboarding outcomes ---

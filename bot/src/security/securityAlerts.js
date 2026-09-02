@@ -6,12 +6,9 @@
  * For HIGH or CRITICAL threats a Security Alert card is posted to the alert
  * channel with action buttons:
  *
- *   ✅ Ban   ⚠ Kick   🟡 Timeout   📝 Warn   ❌ Ignore
- *
- * Only the server owner, Administrators, or configured moderator roles can
- * execute the buttons. Ban/Kick additionally require the underlying Discord
- * permission. THE BOT NEVER BANS AUTOMATICALLY — every destructive action is
- * an explicit human button press.
+ * STRICT alerts use only ✅ APPROVE and ❌ DENY. Approval is restricted to the
+ * server owner and executes the requested BAN/KICK exactly once. The bot never
+ * performs a destructive action merely because a threat was detected.
  *
  * This is complementary to the existing warning-threshold Moderator Approval
  * Panel (managers/approvalSystem.js) — that system is untouched.
@@ -42,6 +39,7 @@ export const SECURITY_PREFIX = 'secalert';
 const openAlerts = new Map();
 /** Per-alert processing locks (duplicate-click guard). */
 const locks = new Set();
+const ALERT_TTL_MS = 30 * 60 * 1000;
 
 let alertCounter = 0;
 
@@ -54,9 +52,10 @@ function nextAlertId() {
 /* Permissions                                                         */
 /* ------------------------------------------------------------------ */
 
-/** Owner / Administrator / configured moderator roles may act. */
-function canAct(member, guild, securitySettings) {
+/** STRICT destructive decisions are owner-only; other alerts keep existing access. */
+function canAct(member, guild, securitySettings, strict = false) {
   if (!member) return false;
+  if (strict) return member.id === guild.ownerId;
   if (member.id === guild.ownerId) return true;
   if (member.permissions?.has(PermissionFlagsBits.Administrator)) return true;
   if (securitySettings.ownerRoleId && member.roles?.cache?.has(securitySettings.ownerRoleId)) return true;
@@ -76,7 +75,7 @@ const ACTION_PERMISSIONS = {
 /* Alert creation                                                      */
 /* ------------------------------------------------------------------ */
 
-function alertButtons(alertId, disabled = false) {
+function alertButtons(alertId, disabled = false, strict = false) {
   const btn = (action, label, emoji, style) =>
     new ButtonBuilder()
       .setCustomId(`${SECURITY_PREFIX}:${alertId}:${action}`)
@@ -85,15 +84,10 @@ function alertButtons(alertId, disabled = false) {
       .setStyle(style)
       .setDisabled(disabled);
 
-  return [
-    new ActionRowBuilder().addComponents(
-      btn('ban', 'Ban', '✅', ButtonStyle.Danger),
-      btn('kick', 'Kick', '⚠️', ButtonStyle.Danger),
-      btn('timeout', 'Timeout', '🟡', ButtonStyle.Primary),
-      btn('warn', 'Warn', '📝', ButtonStyle.Secondary),
-      btn('ignore', 'Ignore', '❌', ButtonStyle.Secondary)
-    ),
-  ];
+  const components = strict
+    ? [btn('approve', 'APPROVE', '✅', ButtonStyle.Danger), btn('deny', 'DENY', '❌', ButtonStyle.Secondary)]
+    : [btn('ban', 'Ban', '✅', ButtonStyle.Danger), btn('kick', 'Kick', '⚠️', ButtonStyle.Danger), btn('timeout', 'Timeout', '🟡', ButtonStyle.Primary), btn('warn', 'Warn', '📝', ButtonStyle.Secondary), btn('ignore', 'Ignore', '❌', ButtonStyle.Secondary)];
+  return [new ActionRowBuilder().addComponents(...components)];
 }
 
 /**
@@ -130,6 +124,8 @@ export async function raiseSecurityAlert(guild, params) {
     const alertId = nextAlertId();
     const meta = threatMeta(params.threatLevel);
     const reasons = (params.reasons ?? []).slice(0, 12);
+    const strict = String(params.threatLevel).toUpperCase() === 'STRICT' || String(params.threatLevel).toUpperCase() === 'CRITICAL';
+    const requestedAction = String(params.recommendedAction ?? '').toLowerCase().includes('kick') ? 'KICK' : 'BAN';
 
     const embed = new EmbedBuilder()
       .setColor(meta.color)
@@ -145,10 +141,13 @@ export async function raiseSecurityAlert(guild, params) {
         { name: '🚨 Threat Level', value: meta.label, inline: true },
         { name: '🔎 Source', value: params.source ?? 'Security Engine', inline: true },
         { name: '🤖 AI Recommendation', value: params.recommendedAction ?? 'review', inline: true },
-        {
+        ...(strict ? [{
+          name: '⚔️ Requested Action',
+          value: `**${requestedAction}**\n\n${reasons.length ? reasons.map((r) => `• ${r}`).join('\n').slice(0, 900) : '*No details provided*'}`,
+        }, { name: '👑 Owner Approval', value: '⏳ Awaiting approval', inline: true }] : [{
           name: '📄 Reasons',
           value: reasons.length ? reasons.map((r) => `• ${r}`).join('\n').slice(0, 1000) : '*None provided*',
-        }
+        }]),
       )
       .setFooter({ text: `Alert ${alertId} • Owner / Admins / configured Moderators only` })
       .setTimestamp();
@@ -158,7 +157,7 @@ export async function raiseSecurityAlert(guild, params) {
     const message = await channel.send({
       content: mention || undefined,
       embeds: [embed],
-      components: alertButtons(alertId),
+      components: alertButtons(alertId, false, strict),
     });
 
     openAlerts.set(alertId, {
@@ -174,6 +173,8 @@ export async function raiseSecurityAlert(guild, params) {
       messageId: message.id,
       createdAt: Date.now(),
       resolved: false,
+      strict,
+      requestedAction,
     });
 
     // Telegram: Owner Approval Request notification (best-effort).
@@ -217,18 +218,25 @@ export async function handleSecurityAlertInteraction(interaction) {
   if (alert.resolved) {
     return interaction.reply({ content: `ℹ️ Alert ${alertId} was already resolved.`, flags: MessageFlags.Ephemeral });
   }
+  if (Date.now() - alert.createdAt > ALERT_TTL_MS) {
+    alert.resolved = true;
+    alert.resolution = 'expired';
+    openAlerts.set(alertId, alert);
+    return interaction.reply({ content: `⌛ Alert ${alertId} has expired and cannot be processed.`, flags: MessageFlags.Ephemeral });
+  }
 
   const guild = interaction.guild;
   const settings = await getSettings(guild.id);
 
-  if (!canAct(interaction.member, guild, settings.security)) {
+  if (!canAct(interaction.member, guild, settings.security, alert.strict)) {
     return interaction.reply({
-      content: '🚫 Only the Owner, Administrators or configured Moderators can act on security alerts.',
+      content: alert.strict ? '🚫 Only the server owner can approve or deny a STRICT security alert.' : '🚫 Only the Owner, Administrators or configured Moderators can act on security alerts.',
       flags: MessageFlags.Ephemeral,
     });
   }
 
-  const needed = ACTION_PERMISSIONS[action];
+  const effectiveAction = alert.strict ? (action === 'approve' ? alert.requestedAction.toLowerCase() : 'ignore') : action;
+  const needed = ACTION_PERMISSIONS[effectiveAction];
   const isOwnerOrAdmin =
     interaction.member.id === guild.ownerId ||
     interaction.member.permissions.has(PermissionFlagsBits.Administrator);
@@ -254,7 +262,7 @@ export async function handleSecurityAlertInteraction(interaction) {
     const reason = `Security alert ${alertId} (${alert.threatLevel}, risk ${alert.riskScore}) — approved by ${interaction.user.tag}`;
     let outcome = '';
 
-    switch (action) {
+    switch (effectiveAction) {
       case 'ban': {
         if (member) {
           const ok = await banMember(member, reason, { moderatorTag: interaction.user.tag });
@@ -335,6 +343,8 @@ export async function handleSecurityAlertInteraction(interaction) {
     }
 
     alert.resolved = true;
+    alert.resolvedBy = interaction.user.id;
+    alert.resolution = effectiveAction;
     openAlerts.set(alertId, alert);
 
     // Finalise the card: append resolution + disable buttons.
@@ -344,12 +354,12 @@ export async function handleSecurityAlertInteraction(interaction) {
       .setDescription(`${outcome}\nResolved by ${interaction.user} • ${new Date().toUTCString()}`)
       .setTimestamp();
     await interaction.message
-      .edit({ embeds: [interaction.message.embeds[0], resolvedEmbed], components: alertButtons(alertId, true) })
+      .edit({ embeds: [interaction.message.embeds[0], resolvedEmbed], components: alertButtons(alertId, true, alert.strict) })
       .catch(() => {});
 
     // Audit + moderation log + Telegram (all best-effort).
     await audit(guild, {
-      action: `Security Alert: ${action.charAt(0).toUpperCase() + action.slice(1)}`,
+      action: `Security Alert: ${effectiveAction.charAt(0).toUpperCase() + effectiveAction.slice(1)}`,
       family: action,
       userTag: alert.userTag,
       userId: alert.userId,
@@ -357,6 +367,7 @@ export async function handleSecurityAlertInteraction(interaction) {
       moderatorId: interaction.user.id,
       reason: outcome,
       buttonPressed: action,
+      effectiveAction,
       confirmationStatus: 'confirmed',
       channelId: interaction.channelId,
       messageLink: interaction.message.url,
@@ -372,7 +383,7 @@ export async function handleSecurityAlertInteraction(interaction) {
     }).catch(() => {});
 
     await notifySecurityAlert({
-      alert_type: `Security Alert Resolved — ${action.toUpperCase()}`,
+      alert_type: `Security Alert ${effectiveAction === 'ignore' ? 'Denied' : 'Approved'} — ${effectiveAction.toUpperCase()}`,
       severity: threatToSeverity(alert.threatLevel),
       server_name: guild.name,
       username: alert.userTag,
@@ -382,7 +393,7 @@ export async function handleSecurityAlertInteraction(interaction) {
       timestamp: new Date().toISOString(),
     }).catch(() => {});
   } catch (error) {
-    logger.error(`Security alert action "${action}" failed: ${error.stack || error}`);
+    logger.error(`Security alert action failed for alert ${alertId}: ${error.message}`);
     if (!interaction.replied && !interaction.deferred) {
       await interaction
         .reply({ content: '⚠️ Something went wrong executing that action.', flags: MessageFlags.Ephemeral })

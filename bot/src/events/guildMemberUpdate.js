@@ -32,6 +32,7 @@ import { reportSecurityEvent } from '../services/securityService.js';
 import { updateProfile } from '../database/profileStore.js';
 import { syncNativeOnboardingFromMember } from '../database/nativeOnboardingSync.js';
 import { config } from '../config.js';
+import { assignForgeMemberRole } from '../services/forgeMemberRole.js';
 import {
   shouldSendGatewayIntroduction,
   completePostScreeningMemberFlow,
@@ -51,6 +52,7 @@ export default {
     try {
       if (shouldSendGatewayIntroduction(oldMember, newMember)) {
         const finalFlow = await completePostScreeningMemberFlow(newMember);
+        const assignedRole = await assignForgeMemberRole(newMember);
         logger.info(
           `Gateway passed — existing member flow sent for ${newMember.user.tag} (${newMember.id}).`
         );
@@ -59,6 +61,7 @@ export default {
             welcomeDmStatus: finalFlow.dmStatus,
             devIntroStatus: finalFlow.gatewayIntroSent ? 'Sent' : 'Not sent',
             verificationStatus: 'Passed gateway',
+            forgeMemberStatus: assignedRole.startsWith('Failed') ? assignedRole : `Assigned (${assignedRole})`,
           },
         }).catch(() => {});
       }

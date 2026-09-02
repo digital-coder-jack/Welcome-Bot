@@ -136,7 +136,6 @@ export async function reportAIViolation(message, result) {
     channel: message.channel?.name ? `#${message.channel.name}` : '',
     details:
       `${result.reason} — rule ${result.rule ?? 'n/a'}, ` +
-      `confidence ${Math.round(result.confidence * 100)}%, action: ${result.action}. ` +
-      `Message: "${(message.content ?? '').slice(0, 200)}"`,
+      `confidence ${Math.round(result.confidence * 100)}%, action: ${result.action}.`,
   });
 }

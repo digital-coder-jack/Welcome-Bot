@@ -55,8 +55,13 @@ class MemberLeftPayload(BaseModel):
     joined_at: str = Field("Unknown", description="ISO timestamp of when they had joined.")
     time_in_server: str = Field("Unknown", description="Human-readable membership duration.")
     member_count: int = Field(0, ge=0, description="Guild member count after the departure.")
-    roles: str = Field("None", description="Comma-separated roles the member had.")
+    roles: str = Field("None", description="Technical role metadata retained for auditing.")
     avatar_url: str = Field("", description="URL of the member's avatar.")
+    interests: list[str] = Field(default_factory=list, description="Previously collected onboarding interests.")
+    experience: Optional[str] = Field(None, description="Previously collected onboarding experience.")
+    work_status: Optional[str] = Field(None, description="Previously collected onboarding work status.")
+    gender: Optional[str] = Field(None, description="Previously collected onboarding gender.")
+    default_role: str = Field("Forge-Members", description="Default post-join member role.")
 
 
 class WarningPayload(BaseModel):

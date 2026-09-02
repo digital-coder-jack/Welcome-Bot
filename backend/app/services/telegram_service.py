@@ -15,6 +15,7 @@ Uses httpx (async) so the FastAPI event loop is never blocked.
 """
 
 import html
+import json
 from typing import Optional
 
 import httpx
@@ -54,6 +55,21 @@ _THREAT_EMOJI = {
 def _esc(value: object) -> str:
     """HTML-escape any value for safe inclusion in a Telegram HTML message."""
     return html.escape(str(value if value is not None else ""), quote=False)
+
+
+def _selection_lines(label: str, values: list[str] | None) -> list[str]:
+    selected = [str(value) for value in (values or []) if value]
+    return [f"<b>{label}</b>", *[f"• {_esc(value)}" for value in selected or ["Not provided"]]]
+
+
+def _single_selection(value: str | None) -> str:
+    return _esc(value or "Not provided")
+
+
+def _archive_record(record_type: str, data: dict) -> str:
+    """Append machine-readable archive metadata without exposing secrets/content."""
+    record = {"schema_version": 1, "record_type": record_type, **data}
+    return f"<pre>{_esc('[FORGE_ASSIST] ' + json.dumps(record, ensure_ascii=False, separators=(',', ':')))}</pre>"
 
 
 class TelegramService:
@@ -136,57 +152,60 @@ class TelegramService:
     # ------------------------------------------------------------------ #
 
     async def notify_member_joined(self, data: MemberJoinedPayload) -> bool:
-        """Send the full member-joined intelligence report to Telegram."""
+        """Send a readable member record plus its machine-readable archive record."""
         is_bot = data.bot_or_human.strip().lower() == "bot"
-        header_emoji = "🤖" if is_bot else "🎉"
-
         lines = [
-            f"{header_emoji} <b>NEW MEMBER JOINED</b>",
+            f"{'🤖' if is_bot else '🎉'} <b>NEW MEMBER JOINED</b>",
             "━━━━━━━━━━━━━━━━━━━━",
-            f"👤 <b>Username:</b> {_esc(data.username)}",
-            f"🏷 <b>Display Name:</b> {_esc(data.display_name)}",
-            f"🆔 <b>User ID:</b> <code>{_esc(data.user_id)}</code>",
-            f"🌐 <b>Server:</b> {_esc(data.server_name)}",
-            f"🕒 <b>Join Time:</b> {_esc(data.join_time)}",
-            f"📅 <b>Account Created:</b> {_esc(data.account_created)}",
-            f"⏳ <b>Account Age:</b> {_esc(data.account_age)}",
-            f"🔢 <b>Member Number:</b> #{data.member_number}",
-            f"🔗 <b>Invite Code:</b> <code>{_esc(data.invite_code)}</code>",
-            f"🙋 <b>Inviter:</b> {_esc(data.inviter)}",
-            f"🧬 <b>Bot or Human:</b> {_esc(data.bot_or_human)}",
-            f"🎭 <b>Assigned Role:</b> {_esc(data.assigned_role)}",
-            f"✉️ <b>DM Status:</b> {_esc(data.dm_status)}",
-            f"📨 <b>Server Invite Used:</b> {_esc(data.server_invite_used)}",
-            f"🎯 <b>Interests:</b> {_esc(', '.join(data.interests) if data.interests else 'Not selected')}",
-            f"⚙️ <b>Experience:</b> {_esc(data.experience or 'Not selected')}",
-            f"💼 <b>Work:</b> {_esc(data.work_status or 'Not selected')}",
-            f"⚧ <b>Gender:</b> {_esc(data.gender or 'Not selected')}",
-            "━━━━━━━━━━━━━━━━━━━━",
+            "<b>👤 MEMBER</b>",
+            f"Username: {_esc(data.username)}",
+            f"Display Name: {_esc(data.display_name)}",
+            f"User ID: <code>{_esc(data.user_id)}</code>",
+            "",
+            "<b>📅 SERVER</b>",
+            f"Joined: {_esc(data.join_time)}",
+            f"Member #: {data.member_number}",
+            f"Invite: <code>{_esc(data.invite_code)}</code>",
+            f"Inviter: {_esc(data.inviter)}",
+            "",
+            "<b>🕐 ACCOUNT</b>",
+            f"Created: {_esc(data.account_created)}",
+            f"Account Age: {_esc(data.account_age)}",
+            f"Account Type: {_esc(data.bot_or_human)}",
+            "",
+            "<b>🧩 ONBOARDING</b>",
+            "🎯 Interests", *_selection_lines("", data.interests)[1:],
+            f"📚 Experience\n• {_single_selection(data.experience)}",
+            f"💼 Doing\n• {_single_selection(data.work_status)}",
+            f"⚧️ Gender\n• {_single_selection(data.gender)}",
+            "",
+            "<b>🤝 DEFAULT ROLE</b>",
+            _esc(data.assigned_role),
+            "",
+            "<b>📩 STATUS</b>",
+            f"Welcome DM: {_esc(data.dm_status)}",
         ]
         if data.avatar_url:
-            lines.append(f"🖼 <b>Avatar:</b> <a href=\"{html.escape(data.avatar_url, quote=True)}\">View</a>")
-
+            lines.extend(["", f"🖼️ <b>AVATAR</b> <a href=\"{html.escape(data.avatar_url, quote=True)}\">View</a>"])
+        lines.extend(["━━━━━━━━━━━━━━━━━━━━", _archive_record("member_joined", {
+            "member": {"user_id": data.user_id, "username": data.username, "display_name": data.display_name},
+            "server": data.server_name, "joined_at": data.join_time,
+            "account_created": data.account_created, "member_number": data.member_number,
+            "invite_code": data.invite_code, "inviter": data.inviter,
+            "is_bot": is_bot, "assigned_role": data.assigned_role,
+            "onboarding": {"interests": data.interests, "experience": data.experience or "Not provided", "doing": data.work_status or "Not provided", "gender": data.gender or "Not provided"},
+        })])
         caption = "\n".join(lines)
-
-        if data.avatar_url:
-            return await self.send_photo(data.avatar_url, caption)
-        return await self.send_message(caption)
+        return await self.send_photo(data.avatar_url, caption) if data.avatar_url else await self.send_message(caption)
 
     async def notify_member_left(self, data: MemberLeftPayload) -> bool:
-        """Send a member-left notification to Telegram."""
+        """Send a clean departure record while retaining prior onboarding data."""
         lines = [
-            "👋 <b>MEMBER LEFT</b>",
-            "━━━━━━━━━━━━━━━━━━━━",
-            f"👤 <b>Username:</b> {_esc(data.username)}",
-            f"🏷 <b>Display Name:</b> {_esc(data.display_name or data.username)}",
-            f"🆔 <b>User ID:</b> <code>{_esc(data.user_id)}</code>",
-            f"🌐 <b>Server:</b> {_esc(data.server_name)}",
-            f"🕒 <b>Leave Time:</b> {_esc(data.leave_time)}",
-            f"📅 <b>Joined At:</b> {_esc(data.joined_at)}",
-            f"⏳ <b>Time in Server:</b> {_esc(data.time_in_server)}",
-            f"🎭 <b>Roles:</b> {_esc(data.roles)}",
-            f"👥 <b>Members Now:</b> {data.member_count}",
-            "━━━━━━━━━━━━━━━━━━━━",
+            "👋 <b>MEMBER LEFT</b>", "━━━━━━━━━━━━━━━━━━━━",
+            "<b>👤 MEMBER</b>", f"Username: {_esc(data.username)}", f"Display Name: {_esc(data.display_name or data.username)}", f"User ID: <code>{_esc(data.user_id)}</code>",
+            "", "<b>📅 MEMBERSHIP</b>", f"Joined: {_esc(data.joined_at)}", f"Left: {_esc(data.leave_time)}", f"Time in Server: {_esc(data.time_in_server)}", f"Members Now: {data.member_count}",
+            "", "<b>🧩 ONBOARDING</b>", "🎯 Interests", *_selection_lines("", data.interests)[1:], f"📚 Experience\n• {_single_selection(data.experience)}", f"💼 Doing\n• {_single_selection(data.work_status)}", f"⚧️ Gender\n• {_single_selection(data.gender)}", "", "<b>🤝 DEFAULT ROLE</b>", _esc(data.default_role),
+            "━━━━━━━━━━━━━━━━━━━━", _archive_record("member_left", {"member": {"user_id": data.user_id, "username": data.username, "display_name": data.display_name}, "server": data.server_name, "joined_at": data.joined_at, "left_at": data.leave_time, "time_in_server": data.time_in_server, "member_count": data.member_count, "onboarding": {"interests": data.interests, "experience": data.experience or "Not provided", "doing": data.work_status or "Not provided", "gender": data.gender or "Not provided"}, "default_role": data.default_role})
         ]
         return await self.send_message("\n".join(lines))
 

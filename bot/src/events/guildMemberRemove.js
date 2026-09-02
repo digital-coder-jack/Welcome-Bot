@@ -27,6 +27,7 @@ import { formatDuration, formatUTC } from '../utils/time.js';
 import { sendLog } from '../services/moderationService.js';
 import { notifyMemberLeft } from '../services/telegramClient.js';
 import { markMemberLeft } from '../database/memberStore.js';
+import { getProfile } from '../database/profileStore.js';
 import { recordLeave } from '../database/securityStore.js';
 import { classifyDeparture, sendFarewellDM } from '../managers/farewellManager.js';
 
@@ -94,6 +95,8 @@ export default {
         ?.filter((role) => role.id !== member.guild.id) // skip @everyone
         .map((role) => role.name)
         .join(', ') || 'None';
+    const storedProfile = await getProfile(member.guild.id, member.id);
+    const onboarding = storedProfile.onboarding ?? {};
 
     // 4. Telegram member-left notification via the backend.
     try {
@@ -108,6 +111,11 @@ export default {
         member_count: member.guild.memberCount,
         roles,
         avatar_url: member.user?.displayAvatarURL?.({ extension: 'png', size: 512 }) ?? '',
+        interests: onboarding.interests ?? [],
+        experience: onboarding.experience ?? null,
+        work_status: onboarding.workStatus ?? null,
+        gender: onboarding.gender ?? null,
+        default_role: 'Forge-Members',
       });
     } catch (error) {
       logger.warn(`Telegram leave notification failed: ${error.message}`);
