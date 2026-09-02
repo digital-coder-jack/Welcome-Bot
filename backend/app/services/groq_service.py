@@ -144,18 +144,11 @@ class GroqModerationService:
         lowered = content.lower()
         for keyword in _FALLBACK_TOXIC_KEYWORDS:
             if keyword in lowered:
-                # Zero-false-positive policy: the keyword heuristic can never
-                # reach 95% certainty, so it may only recommend deletion for
-                # moderator review — never a formal warning.
-                return ModerationResponse(
-                    violation=True,
-                    rule=6,  # No Toxic Behavior
-                    rule_title="No Toxic Behavior",
-                    offending_message=content[:200],
-                    confidence=0.8,
-                    reason="Possible toxic language (heuristic — below 95%, no warning).",
-                    action=ModerationAction.DELETE,
-                )
+                # A keyword is only a signal, never sufficient evidence of a
+                # violation. Without contextual AI analysis, fail open and do
+                # not delete, warn, or otherwise punish the member.
+                logger.info("Heuristic keyword signal ignored without contextual AI analysis.")
+                break
 
         return ModerationResponse(
             violation=False,

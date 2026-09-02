@@ -36,6 +36,9 @@ import { incrementStat } from '../database/statsStore.js';
 import { bumpProfile } from '../database/profileStore.js';
 import { logSecurityEvent } from './securityLogger.js';
 
+/** Formal warnings require explicit, high-confidence AI confirmation. */
+const AI_WARNING_CONFIDENCE_THRESHOLD = 0.95;
+
 /**
  * Run the v2 live-security pipeline on a message.
  * Returns true when a threat was detected and handled (caller can stop).
@@ -143,13 +146,20 @@ export async function runLiveSecurity(message) {
           .timeout(minutes * 60 * 1000, `Live security: ${verdict.reason}`)
           .then(() => recordTimeout(message.guild.id, member.id, minutes, verdict.reason))
           .catch(() => {});
-      } else if (verdict.severity === 'high' || verdict.severity === 'critical' || recommended === 'warn') {
-        // Serious local detections always at least warn (uses the existing
-        // warning pipeline: DM + Telegram + escalation panel at threshold).
+      } else if (
+        ai?.aiAvailable &&
+        recommended === 'warn' &&
+        ai.confidence >= AI_WARNING_CONFIDENCE_THRESHOLD &&
+        typeof ai.violatedRule === 'string' &&
+        ai.violatedRule.trim()
+      ) {
+        // Local detectors are signals, not sufficient evidence for a formal
+        // warning. Only warn after explicit high-confidence AI confirmation
+        // that identifies the configured rule which was violated.
         await issueWarning({
           guild: message.guild,
           member,
-          reason: verdict.reason,
+          reason: ai.explanation || verdict.reason,
           moderatorId: message.client.user.id,
           moderatorTag: 'Forge Guardian',
           source: 'auto',
