@@ -192,6 +192,7 @@ export async function runJoinScan(member, invite) {
           threatLevel: result.threatLevel,
           reasons: result.reasons,
           source: 'Join Security Scan',
+          eventId: `join:${member.guild.id}:${member.id}:${result.history?.previousJoins ?? 0}`,
           recommendedAction: result.ai?.recommendedAction ?? 'review',
         });
         result.alertRaised = true;

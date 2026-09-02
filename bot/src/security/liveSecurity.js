@@ -135,6 +135,7 @@ export async function runLiveSecurity(message) {
         threatLevel,
         reasons: [verdict.reason, ...(ai?.aiAvailable && ai.explanation ? [`AI: ${ai.explanation}`] : [])],
         source: 'Live Security (message)',
+        eventId: `message:${message.guild.id}:${message.id}`,
         recommendedAction: recommended ?? 'review',
       });
     }

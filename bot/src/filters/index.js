@@ -49,10 +49,13 @@ export function detectInviteLinks(message) {
  */
 export function detectExcessiveMentions(message) {
   const mentionCount = message.mentions.users.size + message.mentions.roles.size;
-  if (mentionCount > config.autoMod.maxMentions) {
+  const everyoneMention = Boolean(message.mentions.everyone);
+  if (everyoneMention || mentionCount > config.autoMod.maxMentions) {
     return {
       type: 'mentions',
-      reason: `Too many mentions (${mentionCount}); the limit is ${config.autoMod.maxMentions}.`,
+      reason: everyoneMention
+        ? '@everyone/@here mass mention is not allowed for non-moderators.'
+        : `Too many mentions (${mentionCount}); the limit is ${config.autoMod.maxMentions}.`,
       rule: 4,
       action: 'delete',
     };

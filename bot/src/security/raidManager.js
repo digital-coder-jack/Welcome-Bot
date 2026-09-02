@@ -28,7 +28,7 @@ import { getSettings } from '../database/settingsStore.js';
 import { incrementStat } from '../database/statsStore.js';
 import { logSecurityEvent } from './securityLogger.js';
 
-/** Map<guildId, number[]> join timestamps in the rolling window. */
+/** Map<guildId, join signal records in the rolling window. */
 const joinWindow = new Map();
 
 /** Map<guildId, {activatedAt, expiresAt, timer, locked:[], slowmoded:[]}> */
@@ -57,18 +57,28 @@ export async function trackJoinForRaid(member) {
   const now = Date.now();
   const windowMs = config.security.raidWindowSec * 1000;
 
-  const stamps = (joinWindow.get(guild.id) ?? []).filter((t) => now - t < windowMs);
-  stamps.push(now);
-  joinWindow.set(guild.id, stamps);
+  const entries = (joinWindow.get(guild.id) ?? []).filter((entry) => now - entry.at < windowMs);
+  const ageDays = (now - member.user.createdTimestamp) / 86_400_000;
+  entries.push({
+    at: now,
+    recentAccount: ageDays < config.security.recentAccountDays,
+    defaultAvatar: !member.user.avatar,
+  });
+  joinWindow.set(guild.id, entries);
+  const suspiciousSignals = entries.filter((entry) => entry.recentAccount || entry.defaultAvatar).length;
 
   if (isRaidModeActive(guild.id)) {
     await screenRaidJoiner(member).catch(() => {});
     return true;
   }
 
-  if (stamps.length >= config.security.raidJoinThreshold) {
+  // Join volume is only a signal. Require several suspicious account signals
+  // as well, so a legitimate busy period does not trigger Raid Mode by itself.
+  const minimumSignals = Math.max(3, Math.ceil(config.security.raidJoinThreshold * 0.3));
+  if (entries.length >= config.security.raidJoinThreshold && suspiciousSignals >= minimumSignals) {
     await activateRaidMode(guild, {
-      joinCount: stamps.length,
+      joinCount: entries.length,
+      suspiciousSignals,
       windowSec: config.security.raidWindowSec,
       latest: member,
     }).catch((e) => logger.error(`Raid mode activation failed: ${e.message}`));
@@ -121,7 +131,8 @@ export async function activateRaidMode(guild, info) {
   logSecurityEvent(guild, {
     type: 'RAID_DETECTED',
     severity: 'critical',
-    summary: `Raid Mode activated: ${info.joinCount} joins in ${info.windowSec}s`,
+          summary: `Raid Mode activated: ${info.joinCount} joins in ${info.windowSec}s with ${info.suspiciousSignals ?? 0} account-risk signals`,
+
   }).catch(() => {});
 
   // --- Lock + slowmode the configured channels (best-effort) ---
@@ -161,7 +172,7 @@ export async function activateRaidMode(guild, info) {
           .setColor(0xed4245)
           .setTitle('🚨 RAID MODE ACTIVATED')
           .setDescription(
-            `**${info.joinCount} members joined within ${info.windowSec} seconds.**\n\n` +
+            `**${info.joinCount} members joined within ${info.windowSec} seconds; ${info.suspiciousSignals ?? 0} showed account-risk signals.**\n\n` +
               '• Welcomes are paused\n' +
               '• Suspicious new accounts are being auto-restricted (timeout)\n' +
               `• ${state.locked.length} channel(s) locked, ${state.slowmoded.length} slowmoded\n` +

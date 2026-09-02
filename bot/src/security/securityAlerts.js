@@ -31,6 +31,7 @@ import { issueWarning, kickMember, banMember, sendLog } from '../services/modera
 import { notifyOwnerApproval, notifySecurityAlert } from '../services/telegramClient.js';
 import { recordTimeout, recordKick, recordBan, recordSecurityWarning } from '../database/securityStore.js';
 import { audit } from '../managers/auditLogger.js';
+import { claimSecurityAlert, expireSecurityAlert, findSecurityAlertByEvent, getSecurityAlert, resolveSecurityAlert, saveSecurityAlert } from '../database/securityAlertStore.js';
 
 /** customId prefix for all security-alert buttons. */
 export const SECURITY_PREFIX = 'secalert';
@@ -121,6 +122,11 @@ export async function raiseSecurityAlert(guild, params) {
     const channel = await guild.channels.fetch(channelId).catch(() => null);
     if (!channel?.isTextBased()) return;
 
+    const existing = await findSecurityAlertByEvent(params.eventId);
+    if (existing && !['DENIED', 'EXPIRED', 'ACTION_EXECUTED'].includes(existing.status)) {
+      logger.info(`Security alert deduplicated for event ${params.eventId}.`);
+      return;
+    }
     const alertId = nextAlertId();
     const meta = threatMeta(params.threatLevel);
     const reasons = (params.reasons ?? []).slice(0, 12);
@@ -160,7 +166,7 @@ export async function raiseSecurityAlert(guild, params) {
       components: alertButtons(alertId, false, strict),
     });
 
-    openAlerts.set(alertId, {
+    const alertRecord = {
       alertId,
       guildId: guild.id,
       userId: params.userId,
@@ -171,11 +177,16 @@ export async function raiseSecurityAlert(guild, params) {
       source: params.source ?? 'Security Engine',
       channelId: channel.id,
       messageId: message.id,
+      eventId: params.eventId ?? null,
       createdAt: Date.now(),
+      ttlMs: ALERT_TTL_MS,
       resolved: false,
+      status: 'PENDING',
       strict,
       requestedAction,
-    });
+    };
+    openAlerts.set(alertId, alertRecord);
+    await saveSecurityAlert(alertRecord);
 
     // Telegram: Owner Approval Request notification (best-effort).
     await notifyOwnerApproval({
@@ -208,17 +219,19 @@ export async function raiseSecurityAlert(guild, params) {
 export async function handleSecurityAlertInteraction(interaction) {
   const [, alertId, action] = interaction.customId.split(':');
 
-  const alert = openAlerts.get(alertId);
+  let alert = openAlerts.get(alertId) || await getSecurityAlert(alertId);
   if (!alert) {
     return interaction.reply({
-      content: '❌ This security alert no longer exists (bot may have restarted).',
+      content: '❌ This security alert no longer exists.',
       flags: MessageFlags.Ephemeral,
     });
   }
-  if (alert.resolved) {
+  openAlerts.set(alertId, alert);
+  if (alert.resolved || ['DENIED', 'EXPIRED', 'ACTION_EXECUTED', 'APPROVED_PROCESSING'].includes(alert.status)) {
     return interaction.reply({ content: `ℹ️ Alert ${alertId} was already resolved.`, flags: MessageFlags.Ephemeral });
   }
-  if (Date.now() - alert.createdAt > ALERT_TTL_MS) {
+  if (Date.now() - alert.createdAt > (alert.ttlMs || ALERT_TTL_MS)) {
+    alert = await expireSecurityAlert(alertId) || { ...alert, status: 'EXPIRED' };
     alert.resolved = true;
     alert.resolution = 'expired';
     openAlerts.set(alertId, alert);
@@ -255,6 +268,14 @@ export async function handleSecurityAlertInteraction(interaction) {
     });
   }
   locks.add(alertId);
+
+  // Persistently claim before executing. This survives duplicate clicks and
+  // bot restarts; only PENDING alerts can reach the action switch.
+  const claimed = await claimSecurityAlert(alertId, action);
+  if (!claimed) {
+    locks.delete(alertId);
+    return interaction.reply({ content: `ℹ️ Alert ${alertId} was already claimed or resolved.`, flags: MessageFlags.Ephemeral });
+  }
 
   try {
     await interaction.deferUpdate();
@@ -345,7 +366,15 @@ export async function handleSecurityAlertInteraction(interaction) {
     alert.resolved = true;
     alert.resolvedBy = interaction.user.id;
     alert.resolution = effectiveAction;
+    alert.status = effectiveAction === 'ignore' ? 'DENIED' : 'ACTION_EXECUTED';
+    alert.resolutionAt = new Date().toISOString();
     openAlerts.set(alertId, alert);
+    await resolveSecurityAlert(alertId, {
+      status: alert.status,
+      resolvedBy: interaction.user.id,
+      resolution: effectiveAction,
+      outcome,
+    });
 
     // Finalise the card: append resolution + disable buttons.
     const resolvedEmbed = new EmbedBuilder()
