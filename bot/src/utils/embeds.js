@@ -8,7 +8,7 @@
  * ---------------------------------------------------------------------------
  */
 
-import { EmbedBuilder } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import { formatRulesList, ruleLabel } from './rules.js';
 import { brandIcon, FORGE_BRAND } from '../managers/brandingManager.js';
 
@@ -143,7 +143,7 @@ export function rulesDMEmbed(guildName) {
  * @param {number} params.max     max warnings before kick
  * @returns {EmbedBuilder}
  */
-export function warningDMEmbed({ guildName, reason, count, max }) {
+export function warningDMEmbed({ guildName, reason, count, max, rule = null, ruleTitle = null, offendingMessage = null, warningId = null }) {
   // Tiered messaging: 1 = friendly reminder, 2 = serious warning,
   // >= threshold = final notice (human moderator review — never auto-punished).
   let title;
@@ -166,15 +166,30 @@ export function warningDMEmbed({ guildName, reason, count, max }) {
       'No automatic punishment has been applied — a moderator will decide the outcome.';
   }
 
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setColor(count >= max ? COLORS.danger : COLORS.warning)
-    .setTitle(title)
+    .setTitle(`⚠️ Moderation Warning — ${title.replace(/^\S+\s+/, '')}`)
     .setDescription(description)
     .addFields(
-      { name: 'Reason', value: reason || 'No reason provided' },
-      { name: 'Warnings', value: `${count} / ${max}`, inline: true }
+      { name: 'Rule', value: ruleTitle || (rule ? ruleLabel(rule) : 'Community rules'), inline: true },
+      { name: 'Reason', value: (reason || 'No reason provided').slice(0, 1024) },
+      { name: 'Warning Level', value: `${count} / ${max}`, inline: true },
+      ...(offendingMessage ? [{ name: 'Your message', value: `“${offendingMessage.slice(0, 900)}”` }] : []),
+      { name: 'Next step', value: 'Please follow the community rules going forward. If this warning was issued incorrectly, you may appeal it.' },
     )
     .setTimestamp();
+  if (warningId) embed.setFooter({ text: `Warning ID: ${warningId}` });
+  return embed;
+}
+
+export function warningAppealRow(warningId) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`warning:appeal:${warningId}`)
+      .setLabel('Appeal Warning')
+      .setEmoji('📩')
+      .setStyle(ButtonStyle.Secondary),
+  );
 }
 
 /**

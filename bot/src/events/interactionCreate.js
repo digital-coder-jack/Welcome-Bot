@@ -11,6 +11,7 @@ import { Events, MessageFlags } from 'discord.js';
 import { logger } from '../utils/logger.js';
 import { handlePanelInteraction, PANEL_PREFIX } from '../managers/approvalSystem.js';
 import { handleSecurityAlertInteraction, SECURITY_PREFIX } from '../security/securityAlerts.js';
+import { handleWarningInteraction, WARNING_PREFIX } from '../managers/warningWorkflow.js';
 
 export default {
   name: Events.InteractionCreate,
@@ -36,6 +37,22 @@ export default {
         } else {
           await interaction.reply(errorReply).catch(() => {});
         }
+      }
+      return;
+    }
+
+    // --- Warning appeals and moderator review controls ---
+    if (
+      (interaction.isButton() || interaction.isModalSubmit()) &&
+      interaction.customId.startsWith(`${WARNING_PREFIX}:`)
+    ) {
+      try {
+        await handleWarningInteraction(interaction);
+      } catch (error) {
+        logger.error(`Warning workflow interaction failed: ${error.stack || error}`);
+        const errorReply = { content: '⚠️ Something went wrong handling that warning.', flags: MessageFlags.Ephemeral };
+        if (interaction.replied || interaction.deferred) await interaction.followUp(errorReply).catch(() => {});
+        else await interaction.reply(errorReply).catch(() => {});
       }
       return;
     }

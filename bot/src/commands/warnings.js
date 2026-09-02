@@ -11,7 +11,8 @@
 import { EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
 import { config } from '../config.js';
 import { COLORS } from '../utils/embeds.js';
-import { getWarnings } from '../database/warningStore.js';
+import { getWarnings, countWarnings } from '../database/warningStore.js';
+import { reviewRow } from '../managers/warningWorkflow.js';
 
 export const data = new SlashCommandBuilder()
   .setName('warnings')
@@ -36,10 +37,11 @@ export async function execute(interaction) {
     });
   }
 
+  const activeCount = await countWarnings(interaction.guild.id, targetUser.id);
   const embed = new EmbedBuilder()
     .setColor(COLORS.warning)
     .setTitle(`\u26A0\uFE0F Warnings for ${targetUser.tag}`)
-    .setDescription(`Total: **${warnings.length} / ${config.maxWarnings}**`)
+    .setDescription(`Active: **${activeCount} / ${config.maxWarnings}** · Historical records: **${warnings.length}**`)
     .setThumbnail(targetUser.displayAvatarURL({ size: 128 }))
     .setTimestamp();
 
@@ -49,9 +51,10 @@ export async function execute(interaction) {
     const when = `<t:${Math.floor(new Date(w.timestamp).getTime() / 1000)}:R>`;
     embed.addFields({
       name: `#${warnings.length - recent.length + index + 1} \u2014 ${w.source}`,
-      value: `**Reason:** ${w.reason}\n**By:** ${w.moderatorTag}\n**When:** ${when}`,
+      value: `**Rule:** ${w.ruleTitle || (w.rule ? `Rule ${w.rule}` : 'Community rules')}\n**Reason:** ${w.reason}\n**Status:** ${w.status}\n**By:** ${w.moderatorTag}\n**When:** ${when}`,
     });
   }
 
-  return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+  const latest = [...warnings].reverse().find((warning) => warning.status === 'active') || warnings[warnings.length - 1];
+  return interaction.reply({ embeds: [embed], components: latest ? [reviewRow(latest.id, targetUser.id)] : [], flags: MessageFlags.Ephemeral });
 }

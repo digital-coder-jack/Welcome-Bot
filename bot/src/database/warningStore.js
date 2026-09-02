@@ -1,25 +1,7 @@
 /**
  * warningStore.js
- * ---------------------------------------------------------------------------
- * A small, dependency-free persistence layer for moderation warnings.
- *
- * Design goals:
- *   - Zero external database dependency (works out of the box).
- *   - Durable: warnings survive bot restarts (persisted to a JSON file).
- *   - Safe: writes are debounced and performed atomically (write-then-rename)
- *     so a crash mid-write can never corrupt the store.
- *   - Simple, promise-based API: add / get / count / clear.
- *
- * Data shape on disk:
- * {
- *   "<guildId>:<userId>": [
- *     { id, reason, moderatorId, moderatorTag, timestamp, source }
- *   ]
- * }
- *
- * For a larger deployment you can swap this module for one backed by SQLite
- * or Postgres while keeping the exact same public API.
- * ---------------------------------------------------------------------------
+ * --------------------------------------------------------------------------
+ * Durable warning persistence using the bot's existing atomic JSON storage.
  */
 
 import { promises as fs } from 'node:fs';
@@ -30,50 +12,32 @@ import { randomUUID } from 'node:crypto';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'warnings.json');
-
-/** In-memory cache of the whole store (loaded once on first access). */
 let cache = null;
-/** Prevents concurrent load() races. */
 let loadingPromise = null;
-/** Debounce timer handle for persistence. */
 let writeTimer = null;
 
-/** Build the composite key used to index warnings. */
 function key(guildId, userId) {
   return `${guildId}:${userId}`;
 }
 
-/**
- * Load the store from disk into memory (once). Missing file => empty store.
- * @returns {Promise<object>}
- */
 async function load() {
   if (cache) return cache;
   if (loadingPromise) return loadingPromise;
-
   loadingPromise = (async () => {
     try {
       await fs.mkdir(DATA_DIR, { recursive: true });
-      const raw = await fs.readFile(DATA_FILE, 'utf8');
-      cache = JSON.parse(raw);
+      cache = JSON.parse(await fs.readFile(DATA_FILE, 'utf8'));
     } catch (error) {
-      if (error.code === 'ENOENT') {
-        cache = {}; // First run: no file yet.
-      } else {
-        // Corrupt file: start fresh rather than crash, but keep a backup.
-        cache = {};
+      cache = {};
+      if (error.code !== 'ENOENT') {
+        // Preserve the existing fail-safe behavior for corrupt data.
       }
     }
     return cache;
   })();
-
   return loadingPromise;
 }
 
-/**
- * Persist the in-memory cache to disk atomically. Debounced so a burst of
- * writes results in a single flush.
- */
 function scheduleFlush() {
   if (writeTimer) clearTimeout(writeTimer);
   writeTimer = setTimeout(async () => {
@@ -82,64 +46,131 @@ function scheduleFlush() {
       await fs.mkdir(DATA_DIR, { recursive: true });
       const tmp = `${DATA_FILE}.${process.pid}.tmp`;
       await fs.writeFile(tmp, JSON.stringify(cache, null, 2), 'utf8');
-      await fs.rename(tmp, DATA_FILE); // atomic on POSIX filesystems.
+      await fs.rename(tmp, DATA_FILE);
     } catch {
-      // Persistence failure is non-fatal; the in-memory state is still valid.
+      // In-memory state remains usable if persistence is temporarily unavailable.
     }
   }, 250);
 }
 
-/**
- * Add a warning for a user.
- *
- * @param {object} params
- * @param {string} params.guildId
- * @param {string} params.userId
- * @param {string} params.reason
- * @param {string} params.moderatorId
- * @param {string} params.moderatorTag
- * @param {'command'|'auto'|'ai'} [params.source='command']
- * @returns {Promise<{warning: object, total: number}>}
- */
-export async function addWarning({ guildId, userId, reason, moderatorId, moderatorTag, source = 'command' }) {
+function normalizeWarning(warning) {
+  return {
+    status: 'active',
+    ...warning,
+    status: warning.status ?? 'active',
+    notes: Array.isArray(warning.notes) ? warning.notes : [],
+  };
+}
+
+export async function addWarning({
+  guildId,
+  userId,
+  reason,
+  moderatorId,
+  moderatorTag,
+  source = 'command',
+  severity = 'medium',
+  rule = null,
+  ruleTitle = null,
+  offendingMessage = null,
+  messageId = null,
+  eventId = null,
+}) {
   const store = await load();
   const k = key(guildId, userId);
-  const warning = {
+  if (!store[k]) store[k] = [];
+  const stableEventId = eventId || messageId || null;
+  const duplicate = stableEventId && store[k].find((item) => item.eventId === stableEventId);
+  if (duplicate) return { warning: normalizeWarning(duplicate), total: countActive(store[k]), duplicate: true };
+
+  const warning = normalizeWarning({
     id: randomUUID(),
+    guildId,
+    userId,
     reason,
     moderatorId,
     moderatorTag,
     source,
+    severity,
+    rule,
+    ruleTitle,
+    offendingMessage,
+    messageId,
+    eventId: stableEventId,
     timestamp: new Date().toISOString(),
-  };
-  if (!store[k]) store[k] = [];
+  });
   store[k].push(warning);
   scheduleFlush();
-  return { warning, total: store[k].length };
+  return { warning, total: countActive(store[k]), duplicate: false };
 }
 
-/**
- * Return all warnings for a user (most recent last). Empty array if none.
- * @returns {Promise<Array<object>>}
- */
+function countActive(warnings) {
+  return warnings.filter((warning) => (warning.status ?? 'active') === 'active').length;
+}
+
 export async function getWarnings(guildId, userId) {
   const store = await load();
-  return store[key(guildId, userId)] ?? [];
+  return (store[key(guildId, userId)] ?? []).map(normalizeWarning);
 }
 
-/**
- * Return the number of warnings a user currently has.
- * @returns {Promise<number>}
- */
 export async function countWarnings(guildId, userId) {
-  const warnings = await getWarnings(guildId, userId);
-  return warnings.length;
+  return countActive(await getWarnings(guildId, userId));
 }
 
-/**
- * Clear all warnings for a user.
- * @returns {Promise<number>} the number of warnings that were removed.
- */
+export async function getWarningById(guildId, userId, warningId) {
+  const warnings = await getWarnings(guildId, userId);
+  return warnings.find((warning) => warning.id === warningId) ?? null;
+}
+
+export async function findWarningById(userId, warningId) {
+  const store = await load();
+  for (const [composite, warnings] of Object.entries(store)) {
+    if (!composite.endsWith(`:${userId}`)) continue;
+    const warning = (warnings ?? []).find((item) => item.id === warningId);
+    if (warning) return { guildId: composite.slice(0, -(`:${userId}`).length), warning: normalizeWarning(warning) };
+  }
+  return null;
+}
+
+export async function updateWarning(guildId, userId, warningId, patch) {
+  const store = await load();
+  const warnings = store[key(guildId, userId)] ?? [];
+  const warning = warnings.find((item) => item.id === warningId);
+  if (!warning) return null;
+  Object.assign(warning, patch, { updatedAt: new Date().toISOString() });
+  scheduleFlush();
+  return normalizeWarning(warning);
+}
+
+export async function dismissWarning(guildId, userId, warningId, { moderatorId, moderatorTag, reason = '' }) {
+  return updateWarning(guildId, userId, warningId, {
+    status: 'dismissed',
+    dismissedBy: moderatorId,
+    dismissedByTag: moderatorTag,
+    dismissedAt: new Date().toISOString(),
+    dismissalReason: reason,
+  });
+}
+
+export async function appealWarning(guildId, userId, warningId, appealText) {
+  return updateWarning(guildId, userId, warningId, {
+    status: 'appealed',
+    appeal: { text: String(appealText).slice(0, 1000), submittedAt: new Date().toISOString(), userId },
+  });
+}
+
+export async function addWarningNote(guildId, userId, warningId, { moderatorId, moderatorTag, note }) {
+  const warning = await getWarningById(guildId, userId, warningId);
+  if (!warning) return null;
+  const notes = [...(warning.notes ?? []), {
+    moderatorId,
+    moderatorTag,
+    note: String(note).slice(0, 500),
+    timestamp: new Date().toISOString(),
+  }];
+  return updateWarning(guildId, userId, warningId, { notes });
+}
+
 export async function clearWarnings(guildId, userId) {
   const store = await load();
   const k = key(guildId, userId);

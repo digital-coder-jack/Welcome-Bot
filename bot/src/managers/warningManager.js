@@ -58,17 +58,36 @@ export function classifySeverity(reason, explicit) {
  * @param {object} params  same as warningStore.addWarning plus { severity }.
  * @returns {Promise<{warning: object, total: number, severity: string}>}
  */
-export async function recordWarning({ guildId, userId, reason, moderatorId, moderatorTag, source = 'command', severity }) {
+export async function recordWarning({
+  guildId,
+  userId,
+  reason,
+  moderatorId,
+  moderatorTag,
+  source = 'command',
+  severity,
+  rule = null,
+  ruleTitle = null,
+  offendingMessage = null,
+  messageId = null,
+  eventId = null,
+}) {
   const resolved = classifySeverity(reason, severity);
-  const { warning, total } = await addWarning({
+  const { warning, total, duplicate } = await addWarning({
     guildId,
     userId,
     reason: `[${resolved.toUpperCase()}] ${reason}`,
     moderatorId,
     moderatorTag,
     source,
+    severity: resolved,
+    rule,
+    ruleTitle,
+    offendingMessage,
+    messageId,
+    eventId,
   });
-  return { warning, total, severity: resolved };
+  return { warning, total, severity: resolved, duplicate };
 }
 
 /**

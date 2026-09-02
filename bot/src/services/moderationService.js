@@ -25,7 +25,7 @@ import { PermissionFlagsBits } from 'discord.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { countWarnings } from '../database/warningStore.js';
-import { COLORS, moderationLogEmbed, warningDMEmbed } from '../utils/embeds.js';
+import { COLORS, moderationLogEmbed, warningAppealRow, warningDMEmbed } from '../utils/embeds.js';
 import { ruleLabel } from '../utils/rules.js';
 import { formatUTC } from '../utils/time.js';
 import { notifyKick, notifyWarning } from './telegramClient.js';
@@ -318,7 +318,7 @@ export async function issueWarning({ guild, member, reason, moderatorId, moderat
   if (messageId) rememberWarnedMessage(messageId);
 
   // 1. Classify & persist.
-  const { total, severity: resolvedSeverity } = await recordWarning({
+  const { total, severity: resolvedSeverity, duplicate, warning } = await recordWarning({
     guildId: guild.id,
     userId: member.id,
     reason,
@@ -326,12 +326,33 @@ export async function issueWarning({ guild, member, reason, moderatorId, moderat
     moderatorTag,
     source,
     severity,
+    rule,
+    ruleTitle: forge?.ruleTitle ?? (rule ? ruleLabel(rule) : null),
+    offendingMessage: forge?.offendingMessage ?? null,
+    messageId,
+    eventId: messageId,
   });
+
+  // Restart-safe duplicate protection: the persistent store is authoritative.
+  if (duplicate) {
+    logger.info(`Persistent duplicate warning suppressed for incident ${messageId || warning.id}.`);
+    return { count: total, max, kicked: false, escalated: false, severity: resolvedSeverity };
+  }
 
   // 2. Tiered DM (never fatal if DMs are closed).
   try {
     await member.send({
-      embeds: [warningDMEmbed({ guildName: guild.name, reason, count: total, max })],
+      embeds: [warningDMEmbed({
+        guildName: guild.name,
+        reason,
+        count: total,
+        max,
+        rule,
+        ruleTitle: forge?.ruleTitle ?? (rule ? ruleLabel(rule) : null),
+        offendingMessage: forge?.offendingMessage,
+        warningId: warning.id,
+      })],
+      components: [warningAppealRow(warning.id)],
     });
   } catch {
     logger.debug(`Could not DM warning to ${member.user.tag} (DMs likely closed).`);
