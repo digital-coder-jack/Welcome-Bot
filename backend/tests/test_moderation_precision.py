@@ -58,6 +58,8 @@ def test_clear_high_confidence_rule_violation_is_preserved():
 def test_prompt_requires_context_and_configured_rule():
     assert "DO NOT WARN" in SYSTEM_PROMPT
     assert "Never invent rules" in SYSTEM_PROMPT
+    assert "Understand English, Hindi, Hinglish" in SYSTEM_PROMPT
+    assert "predominant language/style" in SYSTEM_PROMPT
     prompt = build_user_prompt("normal Hinglish baat hai", "friend: kya haal hai")
     assert "Conversation context" in prompt
     assert "normal Hinglish baat hai" in prompt
@@ -90,6 +92,26 @@ def test_hinglish_and_mild_frustration_are_not_flagged_by_fallback():
 
     assert result.violation is False
     assert result.action is ModerationAction.NONE
+
+
+def test_warning_evidence_requires_rule_offending_text_and_reason():
+    result = GroqModerationService()._validate(
+        {
+            "violation": True,
+            "rule": 1,
+            "confidence": 0.99,
+            "action": "warn",
+            "reason": "",
+        },
+        original_content="clear violation",
+    )
+
+    assert result.violation is True
+    assert result.rule == 1
+    assert result.action is ModerationAction.WARN
+    assert result.reason == "No reason provided"
+    # The bot-side gate rejects this result because the model supplied no
+    # explanation, no offending_message, and therefore no complete evidence.
 
 
 def test_malformed_or_low_confidence_verdict_cannot_warn():

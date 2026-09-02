@@ -138,11 +138,18 @@ export async function moderateMessage(message) {
   // ZERO FALSE POSITIVE POLICY: below 95% confidence => NO VIOLATION.
   if (!result.violation || result.confidence < AI_CONFIDENCE_THRESHOLD) return;
 
-  // A warning verdict must carry the exact rule + offending message; if the
-  // verdict is incomplete, a Forge Protocol verification step failed =>
-  // DO NOT WARN.
-  if ((result.action === 'warn' || result.action === 'kick') && (!result.rule || !result.ruleTitle)) {
-    logger.info('AI verdict incomplete (missing rule/title); Forge Protocol says DO NOT WARN.');
+  // A warning verdict must carry the exact configured rule, offending text,
+  // and an explanation. If any evidence is incomplete, a Forge Protocol
+  // verification step failed => DO NOT WARN.
+  if (
+    (result.action === 'warn' || result.action === 'kick') &&
+    (!result.rule ||
+      !result.ruleTitle ||
+      !result.offendingMessage ||
+      !result.reason ||
+      result.reason === 'No reason provided')
+  ) {
+    logger.info('AI verdict incomplete (missing rule/evidence/reason); Forge Protocol says DO NOT WARN.');
     return;
   }
 
