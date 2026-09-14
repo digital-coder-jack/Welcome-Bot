@@ -27,6 +27,7 @@ from app.schemas.telegram import (
     MemberJoinedPayload,
     MemberLeftPayload,
     OwnerApprovalPayload,
+    GuardianVerificationPayload,
     SecurityAlertPayload,
     TimeoutPayload,
     WarningPayload,
