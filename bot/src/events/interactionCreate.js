@@ -12,6 +12,7 @@ import { logger } from '../utils/logger.js';
 import { handlePanelInteraction, PANEL_PREFIX } from '../managers/approvalSystem.js';
 import { handleSecurityAlertInteraction, SECURITY_PREFIX } from '../security/securityAlerts.js';
 import { handleWarningInteraction, WARNING_PREFIX } from '../managers/warningWorkflow.js';
+import { handleVerifyInteraction, VERIFY_PREFIX } from '../managers/verificationManager.js';
 
 export default {
   name: Events.InteractionCreate,
@@ -53,6 +54,18 @@ export default {
         const errorReply = { content: '⚠️ Something went wrong handling that warning.', flags: MessageFlags.Ephemeral };
         if (interaction.replied || interaction.deferred) await interaction.followUp(errorReply).catch(() => {});
         else await interaction.reply(errorReply).catch(() => {});
+      }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith(`${VERIFY_PREFIX}:`)) {
+      try {
+        await handleVerifyInteraction(interaction);
+      } catch (error) {
+        logger.error(`Verification interaction failed: ${error.stack || error}`);
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply({ content: 'Verification failed safely. Please try again later.', flags: MessageFlags.Ephemeral }).catch(() => {});
+        }
       }
       return;
     }

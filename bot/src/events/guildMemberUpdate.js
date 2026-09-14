@@ -32,7 +32,7 @@ import { reportSecurityEvent } from '../services/securityService.js';
 import { updateProfile } from '../database/profileStore.js';
 import { syncNativeOnboardingFromMember } from '../database/nativeOnboardingSync.js';
 import { config } from '../config.js';
-import { assignForgeMemberRole } from '../services/forgeMemberRole.js';
+import { ensureOnboardingState, markOnboardingCompleted } from '../managers/verificationManager.js';
 import {
   shouldSendGatewayIntroduction,
   completePostScreeningMemberFlow,
@@ -52,7 +52,7 @@ export default {
     try {
       if (shouldSendGatewayIntroduction(oldMember, newMember)) {
         const finalFlow = await completePostScreeningMemberFlow(newMember);
-        const assignedRole = await assignForgeMemberRole(newMember);
+        const onboarding = await markOnboardingCompleted(newMember);
         logger.info(
           `Gateway passed — existing member flow sent for ${newMember.user.tag} (${newMember.id}).`
         );
@@ -61,12 +61,18 @@ export default {
             welcomeDmStatus: finalFlow.dmStatus,
             devIntroStatus: finalFlow.gatewayIntroSent ? 'Sent' : 'Not sent',
             verificationStatus: 'Passed gateway',
-            forgeMemberStatus: assignedRole.startsWith('Failed') ? assignedRole : `Assigned (${assignedRole})`,
+            forgeMemberStatus: onboarding.role ? 'Onboarding (unverified)' : 'Not configured',
           },
         }).catch(() => {});
       }
     } catch (error) {
       logger.warn(`Gateway introduction dispatch failed: ${error.message}`);
+    }
+
+    if (newMember.pending === false && oldMember.pending !== false) {
+      await ensureOnboardingState(newMember).catch((error) =>
+        logger.warn(`Onboarding state update failed: ${error.message}`)
+      );
     }
 
     // --- Phase 7: sync native Discord Onboarding outcomes (best-effort) ---

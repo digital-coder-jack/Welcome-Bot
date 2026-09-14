@@ -85,6 +85,11 @@ export function notifyMemberJoined(payload) {
   return post('/telegram/member-joined', payload);
 }
 
+/** Persist verification data through the Guardian-only Data Center route. */
+export function notifyGuardianVerification(payload) {
+  return post('/telegram/guardian-verification', payload);
+}
+
 /**
  * Notify the backend that a member left.
  * @param {object} payload  matches backend MemberLeftPayload schema.

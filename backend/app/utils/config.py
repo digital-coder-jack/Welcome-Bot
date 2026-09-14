@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     # --- Telegram ---
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+    forge_guardian_data_center_2_chat_id: str = ""
 
     # --- Server ---
     host: str = "0.0.0.0"
@@ -67,6 +68,14 @@ class Settings(BaseSettings):
         return (
             bool(self.telegram_bot_token)
             and bool(self.telegram_chat_id)
+            and not self.telegram_bot_token.startswith("your-")
+        )
+
+    @property
+    def guardian_data_center_configured(self) -> bool:
+        return (
+            bool(self.telegram_bot_token)
+            and bool(self.forge_guardian_data_center_2_chat_id)
             and not self.telegram_bot_token.startswith("your-")
         )
 

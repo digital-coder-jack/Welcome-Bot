@@ -161,6 +161,21 @@ class OwnerApprovalPayload(BaseModel):
     timestamp: str = Field(..., description="ISO timestamp.")
 
 
+class GuardianVerificationPayload(BaseModel):
+    """Canonical Forge Guardian member verification record."""
+
+    guild_id: str
+    discord_user_id: str
+    username: str
+    display_name: str
+    onboarding_completed: bool
+    intro_submitted: bool
+    intro_channel_id: str = ""
+    avatar_url: str = ""
+    verification_state: str
+    verification_timestamp: str
+
+
 class TelegramResponse(BaseModel):
     """Standard response for every /telegram/* endpoint."""
 

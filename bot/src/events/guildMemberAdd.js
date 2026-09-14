@@ -42,7 +42,7 @@ import { sendSecurityReport } from '../security/securityReport.js';
 import { isLockdownActive } from '../security/lockdownManager.js';
 import { syncProfileFromMember } from '../database/profileStore.js';
 import { syncNativeOnboardingFromMember } from '../database/nativeOnboardingSync.js';
-import { assignForgeMemberRole } from '../services/forgeMemberRole.js';
+import { ensureOnboardingState, markOnboardingCompleted } from '../managers/verificationManager.js';
 
 /**
  * Join dedupe guard — Discord's gateway can re-emit GuildMemberAdd for the
@@ -125,7 +125,7 @@ export default {
     }
 
     let dmStatus = 'Not attempted';
-    let assignedRole = 'None';
+    let assignedRole = 'Onboarding';
     let devIntroSent = false;
     let telegramSent = false;
     let databaseSaved = false;
@@ -158,9 +158,15 @@ export default {
         devIntroSent = finalFlow.gatewayIntroSent;
       }
 
-      // Assign the default role only after the member has completed the
-      // required screening flow. It is never treated as an answer.
-      assignedRole = await assignForgeMemberRole(member);
+    }
+
+    if (!isBot) {
+      const stateUpdate = member.pending === true
+        ? ensureOnboardingState(member)
+        : markOnboardingCompleted(member);
+      await stateUpdate.catch((error) =>
+        logger.warn(`Initial onboarding state setup failed: ${error.message}`)
+      );
     }
 
     // --- Phase 7: synchronize native Discord Onboarding outcomes ---

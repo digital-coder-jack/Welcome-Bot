@@ -115,6 +115,36 @@ class TelegramService:
             logger.error("Telegram sendMessage error: %s", exc)
             return False
 
+    async def send_guardian_message(self, text: str) -> bool:
+        """Send only to the Guardian Data Center destination; never fall back."""
+        if not settings.guardian_data_center_configured:
+            logger.warning("Forge Guardian Data Center is not configured; skipping verification record.")
+            return False
+        payload = {
+            "chat_id": settings.forge_guardian_data_center_2_chat_id,
+            "text": text[:4096],
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.post(self._url("sendMessage"), json=payload)
+            data = response.json()
+            return response.status_code == 200 and data.get("ok", False)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Guardian Data Center send error: %s", exc)
+            return False
+
+    async def notify_guardian_verification(self, data: GuardianVerificationPayload) -> bool:
+        record = {
+            "schema_version": 1,
+            "record_type": "member_verification",
+            "member": data.model_dump(),
+        }
+        return await self.send_guardian_message(
+            f"<b>FORGE GUARDIAN VERIFICATION</b>\n<pre>{_esc('[FORGE_GUARDIAN] ' + json.dumps(record, ensure_ascii=False, separators=(',', ':')))}</pre>"
+        )
+
     async def send_photo(self, photo_url: str, caption: str) -> bool:
         """
         Send a photo with an HTML caption. Falls back to a plain text message

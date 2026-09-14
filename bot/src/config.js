@@ -108,6 +108,8 @@ export const config = Object.freeze({
     goodbye: envStr('GOODBYE_CHANNEL_ID'),
     log: envStr('LOG_CHANNEL_ID'),
     devIntro: envStr('DEV_INTRO_CHANNEL_ID') || envStr('DEVINTRO_CHANNEL_ID'),
+    forgeProtocol: envStr('FORGE_PROTOCOL_CHANNEL_ID'),
+    normalCategories: Object.freeze(envList('NORMAL_COMMUNITY_CATEGORY_IDS')),
     // Optional channels used by the premium welcome buttons & mod alerts.
     rules: envStr('RULES_CHANNEL_ID'), // 📖 Rules button target
     community: envStr('COMMUNITY_CHANNEL_ID'), // 🎮 Community button target
@@ -121,6 +123,7 @@ export const config = Object.freeze({
   }),
   roles: Object.freeze({
     forgeMember: envStr('FORGE_MEMBER_ROLE_ID'),
+    onboarding: envStr('ONBOARDING_ROLE_ID'),
   }),
 
   // --- Discord onboarding role maps (all optional) ---

@@ -29,6 +29,7 @@ from app.schemas.telegram import (
     TelegramResponse,
     TimeoutPayload,
     WarningPayload,
+    GuardianVerificationPayload,
 )
 from app.services.telegram_service import telegram_service
 from app.utils.logger import logger
@@ -66,6 +67,16 @@ async def member_left(payload: MemberLeftPayload) -> TelegramResponse:
     return TelegramResponse(
         success=delivered,
         message="Member-left notification sent." if delivered else "Telegram delivery failed.",
+    )
+
+
+@router.post("/guardian-verification", response_model=TelegramResponse)
+async def guardian_verification(payload: GuardianVerificationPayload) -> TelegramResponse:
+    """Send a verification record only to the Forge Guardian Data Center."""
+    delivered = await telegram_service.notify_guardian_verification(payload)
+    return TelegramResponse(
+        success=delivered,
+        message="Guardian verification record sent." if delivered else "Guardian Data Center delivery failed.",
     )
 
 

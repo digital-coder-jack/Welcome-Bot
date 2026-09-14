@@ -111,6 +111,12 @@ export function emptyProfile(guildId, userId) {
       forgeMemberStatus: 'Not assigned',
       devIntroStatus: 'Not sent',
       welcomeDmStatus: 'Not attempted',
+      onboardingCompleted: false,
+      introSubmitted: false,
+      introMessageId: null,
+      introChannelId: null,
+      onboardingRoleId: null,
+      verifiedAt: null,
     },
     moderation: {
       warnings: 0,
