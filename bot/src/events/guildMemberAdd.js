@@ -30,9 +30,8 @@ import {
   registerPendingIntroduction,
   completePostScreeningMemberFlow,
 } from '../managers/introductionManager.js';
-import { accountAge, formatUTC } from '../utils/time.js';
+import { accountAge } from '../utils/time.js';
 import { sendLog } from '../services/moderationService.js';
-import { notifyMemberJoined } from '../services/telegramClient.js';
 import { resolveUsedInvite } from '../services/inviteTracker.js';
 import { trackJoinForSecurity } from '../services/securityService.js';
 import { isDuplicateActiveJoin, saveMember } from '../database/memberStore.js';
@@ -180,34 +179,10 @@ export default {
       logger.warn(`Failed to sync native onboarding data: ${error.message}`);
     }
 
-    // --- Step 3: Telegram join notification via the backend ---
-    try {
-      telegramSent = await notifyMemberJoined({
-        username: member.user.username,
-        display_name: member.displayName ?? member.user.globalName ?? member.user.username,
-        user_id: member.id,
-        server_name: member.guild.name,
-        join_time: formatUTC(member.joinedTimestamp ?? Date.now()),
-        account_created: formatUTC(member.user.createdTimestamp),
-        account_age: accountAge(member.user.createdTimestamp),
-        member_number: member.guild.memberCount,
-        invite_code: invite.code,
-        inviter: invite.inviterTag,
-        bot_or_human: isBot ? 'Bot' : 'Human',
-        avatar_url: member.user.displayAvatarURL({ extension: 'png', size: 512 }),
-        assigned_role: assignedRole,
-        dm_status: dmStatus,
-        server_invite_used: invite.url,
-        interests: nativeOnboarding.interests,
-        experience: nativeOnboarding.experience,
-        work_status: nativeOnboarding.workStatus,
-        gender: nativeOnboarding.gender,
-      });
-    } catch (error) {
-      logger.warn(`Telegram join notification failed: ${error.message}`);
-    }
+    // No member/onboarding archive is sent here. Forge Guardian receives the
+    // final member record only after the member successfully verifies.
 
-    // --- Step 4: Save member information ---
+    // --- Step 3: Save existing local member information ---
     try {
       databaseSaved = Boolean(await saveMember({
         guildId: member.guild.id,

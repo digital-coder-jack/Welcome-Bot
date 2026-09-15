@@ -115,6 +115,7 @@ export function emptyProfile(guildId, userId) {
       introSubmitted: false,
       introMessageId: null,
       introChannelId: null,
+      introContent: null,
       onboardingRoleId: null,
       verifiedAt: null,
     },

@@ -31,10 +31,11 @@ export default {
           await message.reply({ content: 'Please include a real introduction (at least 10 characters) before verifying.' });
           return;
         }
-        await markIntroductionSubmitted(message);
+        const profile = await markIntroductionSubmitted(message);
+        if (!profile) return;
         await message.reply({
           content: 'Introduction received. When you are ready, verify below.',
-          components: [verifyButton(message.member)],
+          components: [verifyButton(message.guild, message.author.id)],
         });
       } catch (error) {
         logger.warn(`Dev Intro verification prompt failed: ${error.message}`);

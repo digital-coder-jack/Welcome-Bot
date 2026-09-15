@@ -11,6 +11,7 @@ import { getProfile, updateProfile } from '../database/profileStore.js';
 import { notifyGuardianVerification } from '../services/telegramClient.js';
 
 export const VERIFY_PREFIX = 'forge-verify';
+const promptedIntroMessages = new Set();
 
 export async function resolveOnboardingRole(guild) {
   const configured = config.roles.onboarding;
@@ -60,10 +61,10 @@ async function configureVisibility(member, onboardingRole, verifiedRole, unlocke
   }
   for (const id of visibleChannels) {
     const channel = await guild.channels.fetch(id).catch(() => null);
-    if (channel) await applyOverwrite(channel, onboardingRole.id, true, false);
+    if (channel && onboardingRole) await applyOverwrite(channel, onboardingRole.id, true, false);
   }
   for (const channel of targets) {
-    await applyOverwrite(channel, onboardingRole.id, unlocked, !unlocked);
+    if (onboardingRole) await applyOverwrite(channel, onboardingRole.id, unlocked, !unlocked);
     if (verifiedRole) await applyOverwrite(channel, verifiedRole.id, true, false);
   }
   return { configured: targets.length > 0, visibleChannels };
@@ -89,10 +90,12 @@ export async function ensureOnboardingState(member) {
   return { role, configured: true };
 }
 
-export function verifyButton(member) {
+export function verifyButton(memberOrGuild, userId) {
+  const guildId = memberOrGuild.guild?.id ?? memberOrGuild.id;
+  const memberId = userId ?? memberOrGuild.id;
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`${VERIFY_PREFIX}:${member.guild.id}:${member.id}`)
+      .setCustomId(`${VERIFY_PREFIX}:${guildId}:${memberId}`)
       .setLabel('Verify')
       .setStyle(ButtonStyle.Success)
       .setEmoji('✅')
@@ -131,14 +134,13 @@ export async function handleVerifyInteraction(interaction) {
     onboarding_completed: true,
     intro_submitted: true,
     intro_channel_id: profile.server.introChannelId ?? config.channels.devIntro,
+    introduction: profile.server.introContent ?? '',
+    onboarding: profile.onboarding,
+    roles: member.roles.cache.filter((role) => role.id !== interaction.guild.id).map((role) => ({ id: role.id, name: role.name })),
     avatar_url: member.user.displayAvatarURL({ extension: 'png', size: 512 }),
     verification_state: 'verified',
     verification_timestamp: new Date().toISOString(),
   };
-  if (!await notifyGuardianVerification(record)) {
-    await interaction.reply({ content: 'Verification is temporarily unavailable. Nothing was unlocked; please try again shortly.', ephemeral: true });
-    return;
-  }
   const onboardingRole = profile.server.onboardingRoleId
     ? await interaction.guild.roles.fetch(profile.server.onboardingRoleId).catch(() => null)
     : await resolveOnboardingRole(interaction.guild);
@@ -154,6 +156,13 @@ export async function handleVerifyInteraction(interaction) {
   } catch (error) {
     logger.warn(`Verification role/permission update failed for ${userId}: ${error.message}`);
     await interaction.reply({ content: 'Verification was saved, but Discord could not finish unlocking your channels. Please contact staff.', ephemeral: true });
+    return;
+  }
+  if (!await notifyGuardianVerification(record)) {
+    await member.roles.remove(verifiedRole, 'Guardian persistence failed; reverting verification.').catch(() => {});
+    if (onboardingRole) await member.roles.add(onboardingRole, 'Guardian persistence failed; reverting verification.').catch(() => {});
+    await configureVisibility(member, onboardingRole, verifiedRole, false);
+    await interaction.reply({ content: 'Verification could not be saved. Your channels remain locked; please try again shortly.', ephemeral: true });
     return;
   }
   await updateProfile(guildId, userId, {
@@ -173,11 +182,14 @@ export async function markOnboardingCompleted(member) {
 }
 
 export async function markIntroductionSubmitted(message) {
+  if (promptedIntroMessages.has(message.id)) return null;
+  promptedIntroMessages.add(message.id);
   const profile = await updateProfile(message.guild.id, message.author.id, {
     server: {
       introSubmitted: true,
       introMessageId: message.id,
       introChannelId: message.channel.id,
+      introContent: message.content,
       introSubmittedAt: new Date().toISOString(),
     },
   });

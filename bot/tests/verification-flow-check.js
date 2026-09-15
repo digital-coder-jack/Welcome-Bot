@@ -19,6 +19,11 @@ assert.match(client, /guardian-verification/);
 
 const messageHandler = await readFile(new URL('../src/events/messageCreate.js', import.meta.url), 'utf8');
 assert.match(messageHandler, /length < 10/);
+assert.match(messageHandler, /verifyButton\(message\.guild, message\.author\.id\)/);
+
+const joinHandler = await readFile(new URL('../src/events/guildMemberAdd.js', import.meta.url), 'utf8');
+assert.doesNotMatch(joinHandler, /notifyMemberJoined/);
+assert.match(joinHandler, /No member\/onboarding archive is sent here/);
 
 const backend = await readFile(new URL('../../backend/app/services/telegram_service.py', import.meta.url), 'utf8');
 assert.match(backend, /\[FORGE_GUARDIAN\]/);
