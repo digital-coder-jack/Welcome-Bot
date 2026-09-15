@@ -4,9 +4,9 @@ import { readFile } from 'node:fs/promises';
 const manager = await import('../src/managers/verificationManager.js');
 assert.equal(manager.VERIFY_PREFIX, 'forge-verify');
 
-const button = manager.verifyButton({ guild: { id: 'guild-1' }, id: 'user-1' });
+const button = manager.verifyButton({ guild: { id: 'guild-1' }, id: 'user-1' }, undefined, 'intro-1');
 const buttonJson = button.toJSON().components[0];
-assert.equal(buttonJson.custom_id, 'forge-verify:guild-1:user-1');
+assert.equal(buttonJson.custom_id, 'forge-verify:guild-1:user-1:intro-1');
 assert.equal(buttonJson.label, 'Verify');
 
 const source = await readFile(new URL('../src/managers/verificationManager.js', import.meta.url), 'utf8');
@@ -19,7 +19,11 @@ assert.match(client, /guardian-verification/);
 
 const messageHandler = await readFile(new URL('../src/events/messageCreate.js', import.meta.url), 'utf8');
 assert.match(messageHandler, /length < 10/);
-assert.match(messageHandler, /verifyButton\(message\.guild, message\.author\.id\)/);
+assert.match(messageHandler, /verifyButton\(message\.guild, message\.author\.id, message\.id\)/);
+assert.match(messageHandler, /message\.id\)/);
+
+assert.match(source, /This verification button is stale/);
+assert.match(source, /Onboarding permission target inaccessible to bot/);
 
 const joinHandler = await readFile(new URL('../src/events/guildMemberAdd.js', import.meta.url), 'utf8');
 assert.doesNotMatch(joinHandler, /notifyMemberJoined/);

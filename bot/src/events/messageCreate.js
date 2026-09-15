@@ -33,12 +33,14 @@ export default {
         }
         const profile = await markIntroductionSubmitted(message);
         if (!profile) return;
-        await message.reply({
+        logger.info(`Verification UI creation started: guild=${message.guild.id} user=${message.author.id} intro=${message.id}`);
+        const verificationMessage = await message.reply({
           content: 'Introduction received. When you are ready, verify below.',
-          components: [verifyButton(message.guild, message.author.id)],
+          components: [verifyButton(message.guild, message.author.id, message.id)],
         });
+        logger.info(`Verification UI sent successfully: guild=${message.guild.id} user=${message.author.id} message=${verificationMessage.id}`);
       } catch (error) {
-        logger.warn(`Dev Intro verification prompt failed: ${error.message}`);
+        logger.warn(`Verification UI send failed: guild=${message.guild?.id ?? 'unknown'} user=${message.author?.id ?? 'unknown'} error=${error.code ?? 'unknown'} ${error.message}`);
       }
     }
 
